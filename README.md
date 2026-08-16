@@ -20,6 +20,11 @@ python main.py
 python main.py --source D:\legacy_project --output D:\migrated_project
 ```
 
+## 两个入口文件
+
+- `main.py`：程序运行入口，用户启动 CLI 时执行；
+- `AGENTS.md`：Agent 行为入口，供 AI Agent 阅读，索引 `rules/`、`skills/`、`docs/` 的位置与红线，不包含可执行逻辑。
+
 ## 目录结构
 
 ```text
