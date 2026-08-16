@@ -1,0 +1,91 @@
+# Migration Agent 全局配置
+# 修改后重启 CLI 生效
+
+llm:
+  # 可选值: openai | ollama
+  # openai 表示任何兼容 OpenAI 协议的 API，包括 OpenAI 官方与本地兼容服务
+  provider: openai
+  temperature: 0.2
+  max_tokens: 2048
+  timeout_seconds: 120
+
+  openai:
+    # OpenAI 官方或兼容服务地址
+    base_url: https://api.openai.com/v1
+    # 从环境变量读取密钥，避免写入配置文件
+    api_key_env: OPENAI_API_KEY
+    model: gpt-4o-mini
+
+  ollama:
+    # 本地 Ollama 服务地址
+    base_url: http://localhost:11434
+    model: qwen2.5:7b
+
+workspace:
+  # 输出目录内的审计子目录名称
+  audit_dir_name: .migration-agent
+  # 单次任务最大计划条目数
+  max_plan_items: 50
+  # 单条计划最大重试次数
+  max_retries_per_item: 3
+  # 单次任务最大应用补丁总数
+  max_total_patches: 200
+
+retrieval:
+  bm25:
+    enabled: true
+    top_k: 20
+
+  vector:
+    # 依赖 sentence-transformers 或外部 embedding API，骨架阶段默认关闭
+    enabled: false
+    top_k: 20
+    embedding_model: text-embedding-3-small
+
+  rerank:
+    enabled: true
+    top_k: 5
+    model: cross-encoder/ms-marco-MiniLM-L-6-v2
+
+guardrails:
+  # Agent 可调用的工具白名单，白名单外一律拒绝
+  allowed_tools:
+    - scan_files
+    - retrieve_examples
+    - propose_plan
+    - apply_patch
+    - run_verifier
+    - write_report
+
+  # 影响面分级: low | medium | high
+  # 低于等于该等级的计划条目可自动应用
+  auto_apply_max_impact: low
+  # 需要人工审批的影响面等级
+  require_approval_impact:
+    - medium
+    - high
+
+  # 禁止纳入迁移的扩展名
+  deny_extensions:
+    - .pyc
+    - .pdb
+    - .exe
+    - .dll
+    - .so
+    - .dylib
+    - .bin
+    - .dat
+
+  # 单个文件大小上限，单位 MB
+  max_file_size_mb: 5
+
+  # 扫描时跳过的目录
+  excluded_dirs:
+    - .git
+    - node_modules
+    - __pycache__
+    - venv
+    - .venv
+    - dist
+    - build
+    - .migration-agent
