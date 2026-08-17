@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from agent.config import VALID_IMPACT_LEVELS
+from agent.context_loader import build_planning_context
 from agent.llm import LLMClient, LLMError
 from agent.state import PlanItem
 
@@ -33,15 +34,29 @@ def build_fallback_plan(files: list[str]) -> list[PlanItem]:
     ]
 
 
+def build_plan_messages(
+    files: list[str],
+    evidence: list[dict] | None = None,
+) -> list[dict[str, str]]:
+    """组装规划阶段消息，注入入口文件、规则与技能上下文。"""
+    context = build_planning_context()
+    system = PLAN_SYSTEM_PROMPT
+    if context:
+        system += "\n\n以下为项目约束上下文，必须遵守：\n" + context
+
+    payload: dict = {"files": files}
+    if evidence:
+        payload["evidence"] = evidence
+
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
+
+
 def generate_llm_plan(client: LLMClient, files: list[str]) -> list[PlanItem]:
     """让大模型生成迁移计划，并严格校验每条计划。"""
-    messages = [
-        {"role": "system", "content": PLAN_SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": json.dumps({"files": files}, ensure_ascii=False),
-        },
-    ]
+    messages = build_plan_messages(files)
     payload = client.complete_json(messages, max_tokens=4096)
     items = payload.get("items")
     if not isinstance(items, list):
