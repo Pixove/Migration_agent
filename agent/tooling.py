@@ -10,6 +10,7 @@ from agent.guardrails import Budget, PathGuard, ToolRegistry
 from agent.llm import LLMClient, LLMError
 from agent.planning import build_fallback_plan, generate_llm_plan
 from agent.state import AuditWorkspace, MigrationState, PlanItem
+from migration.py2to3 import transform_python2_to_3
 from retrieval import HybridRetriever
 from retrieval.documents import RetrievalError
 from tools.patcher import apply_plan_item
@@ -101,7 +102,8 @@ def _apply_patch(ctx: ToolContext, item: Any = None, **kwargs: Any) -> dict[str,
         raise ValueError("apply_patch 需要 item 参数")
     if isinstance(item, dict):
         item = PlanItem(**item)
-    result = apply_plan_item(item, ctx.guard)
+    transform = transform_python2_to_3 if item.action == "transform" else None
+    result = apply_plan_item(item, ctx.guard, transform=transform)
     return {
         "success": result.success,
         "output_path": str(result.output_path) if result.output_path else None,
