@@ -81,6 +81,12 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue(
                 all(item.status == "applied" for item in state.plan_items)
             )
+            counts = runner.dispatcher.call_counts()
+            self.assertEqual(counts["scan_files"], 1)
+            self.assertEqual(counts["propose_plan"], 1)
+            self.assertEqual(counts["write_report"], 1)
+            self.assertEqual(counts["apply_patch"], 2)
+            self.assertEqual(counts["run_verifier"], 2)
 
 
 if __name__ == "__main__":

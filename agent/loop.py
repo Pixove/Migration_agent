@@ -4,16 +4,15 @@ from collections.abc import Callable
 from pathlib import Path
 
 from agent.config import AppConfig
+from agent.dispatcher import ToolDispatcher
 from agent.guardrails import Budget, build_guardrails
-from agent.llm import LLMError, create_llm_client
-from agent.planning import build_fallback_plan, generate_llm_plan
+from agent.llm import create_llm_client
+from agent.planning import build_fallback_plan
 from agent.state import AuditWorkspace, MigrationState, Phase, PlanItem
+from agent.tooling import ToolContext, register_tools
 from retrieval import HybridRetriever
 from retrieval.documents import Document, load_documents
-from tools.patcher import apply_plan_item
-from tools.reporter import write_report
-from tools.scanner import FileInfo, scan_project
-from tools.verifier import verify_file
+from tools.scanner import FileInfo
 
 
 class MigrationRunner:
@@ -53,6 +52,15 @@ class MigrationRunner:
         )
         self.llm = None if no_llm else create_llm_client(config.llm)
         self.retriever: HybridRetriever | None = None
+        self.ctx = ToolContext(
+            config=self.config,
+            guard=self.guard,
+            state=self.state,
+            workspace=self.workspace,
+            llm=self.llm,
+        )
+        self.dispatcher = ToolDispatcher(self.tools, self.budget)
+        register_tools(self.dispatcher, self.ctx)
 
     def run(self) -> MigrationState:
         try:
@@ -79,11 +87,10 @@ class MigrationRunner:
         self.state.transition(Phase.SCAN)
 
     def _scan(self) -> list[FileInfo]:
-        files = scan_project(
-            self.state.source_root,
-            self.config.guardrails,
-            self.guard,
-        )
+        result = self.dispatcher.call("scan_files")
+        if not result.success:
+            raise RuntimeError(f"scan_files 失败: {result.error}")
+        files = self.ctx.files
         self.state.add_audit(
             "scan_files",
             f"扫描完成，发现 {len(files)} 个文件",
@@ -105,26 +112,31 @@ class MigrationRunner:
         if docs:
             self.retriever = HybridRetriever(self.config.retrieval)
             self.retriever.index(docs)
+            self.ctx.retriever = self.retriever
         self.workspace.save_state()
 
     def _plan(self, files: list[FileInfo]) -> list[PlanItem]:
         self.state.transition(Phase.PLAN)
         file_paths = sorted(file.relative_path for file in files)
 
-        if self.llm is None:
-            plan = build_fallback_plan(file_paths)
-            source = "fallback"
-        else:
-            try:
-                plan = generate_llm_plan(self.llm, file_paths)
-                source = "llm"
-            except LLMError as exc:
-                plan = build_fallback_plan(file_paths)
-                source = "fallback"
+        result = self.dispatcher.call("propose_plan", files=file_paths)
+        if result.success:
+            payload = result.result
+            plan = [PlanItem(**item) for item in payload["items"]]
+            source = payload.get("source", "fallback")
+            llm_error = payload.get("error")
+            if llm_error:
                 self.state.add_audit(
                     "propose_plan",
-                    f"LLM 计划失败，使用回退计划: {exc}",
+                    f"LLM 计划失败，使用回退计划: {llm_error}",
                 )
+        else:
+            plan = build_fallback_plan(file_paths)
+            source = "fallback"
+            self.state.add_audit(
+                "propose_plan",
+                f"计划工具失败，使用回退计划: {result.error}",
+            )
 
         for item in plan:
             self.budget.record_plan_item()
@@ -155,47 +167,70 @@ class MigrationRunner:
                 return
 
         self.budget.check_patch()
-        result = apply_plan_item(item, self.guard)
-        if not result.success:
+        patch_call = self.dispatcher.call("apply_patch", item=item)
+        if not patch_call.success:
             item.status = "failed"
-            item.error = result.error
+            item.error = patch_call.error
             self.state.add_audit(
                 "apply_patch",
                 f"应用失败: {item.file}",
-                {"item_id": item.id, "error": result.error},
+                {"item_id": item.id, "error": patch_call.error},
+            )
+            return
+
+        patch = patch_call.result
+        if not patch["success"]:
+            item.status = "failed"
+            item.error = patch["error"]
+            self.state.add_audit(
+                "apply_patch",
+                f"应用失败: {item.file}",
+                {"item_id": item.id, "error": patch["error"]},
             )
             return
 
         item.status = "applied"
-        item.output_file = result.output_path.relative_to(
-            self.state.output_root
-        ).as_posix()
-        verification = verify_file(result.output_path)
-        if not verification.success:
+        output_path = Path(patch["output_path"])
+        item.output_file = output_path.relative_to(self.state.output_root).as_posix()
+
+        verify_call = self.dispatcher.call("run_verifier", path=str(output_path))
+        if not verify_call.success:
             item.status = "failed"
-            item.error = "; ".join(
-                check.message for check in verification.checks if not check.ok
-            )
-            result.output_path.unlink(missing_ok=True)
+            item.error = f"验证工具调用失败: {verify_call.error}"
+            output_path.unlink(missing_ok=True)
             item.error += "；已回滚输出文件"
         else:
-            self.budget.record_patch()
+            verification = verify_call.result
+            if not verification["success"]:
+                item.status = "failed"
+                item.error = "; ".join(
+                    check["message"]
+                    for check in verification["checks"]
+                    if not check["ok"]
+                )
+                output_path.unlink(missing_ok=True)
+                item.error += "；已回滚输出文件"
+            else:
+                self.budget.record_patch()
 
         self.state.add_audit(
             "apply_patch",
             f"应用完成: {item.file}",
             {
                 "item_id": item.id,
-                "verified": verification.success,
-                "diff_length": len(result.diff),
+                "verified": item.status == "applied",
+                "diff_length": len(patch["diff"]),
             },
         )
 
     def _finish(self) -> None:
         self.state.transition(Phase.VERIFY)
         self.state.transition(Phase.REPORT)
-        report = write_report(self.state, self.workspace)
-        self.state.add_audit("write_report", f"报告已生成: {report.name}")
+        result = self.dispatcher.call("write_report")
+        if not result.success:
+            raise RuntimeError(f"write_report 失败: {result.error}")
+        report_name = Path(result.result["path"]).name
+        self.state.add_audit("write_report", f"报告已生成: {report_name}")
         self.workspace.save_state()
         self.state.transition(Phase.DONE)
         self.workspace.save_state()
