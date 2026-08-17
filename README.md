@@ -21,6 +21,15 @@ python main.py
 python main.py --source D:\legacy_project --output D:\migrated_project
 ```
 
+使用内置迁移知识库：
+
+```powershell
+.venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --docs knowledge_base
+```
+
+知识库文档位于 `knowledge_base/`，覆盖 Python 2 到 3 语法迁移、
+并发安全、内存泄漏与验证回滚等内容。
+
 `config.yaml` 是本地配置，已被 `.gitignore` 忽略，不会提交到仓库；
 模板放在 `config.example.yaml`。
 

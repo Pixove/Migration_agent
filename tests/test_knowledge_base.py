@@ -53,6 +53,16 @@ class KnowledgeBaseTests(unittest.TestCase):
             hits = retriever.search("print statement")
             self.assertTrue(hits)
 
+    def test_builtin_knowledge_base_imports_and_searches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            kb = KnowledgeBase(Path(tmp) / "kb")
+            stats = kb.import_source("knowledge_base")
+            self.assertGreater(stats["added"], 5)
+
+            config = load_config("config.yaml").retrieval
+            hits = kb.build_retriever(config).search("print 语句 迁移")
+            self.assertTrue(hits)
+
 
 if __name__ == "__main__":
     unittest.main()
