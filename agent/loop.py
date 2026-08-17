@@ -11,7 +11,7 @@ from agent.planning import build_fallback_plan
 from agent.state import AuditWorkspace, MigrationState, Phase, PlanItem
 from agent.tooling import ToolContext, register_tools
 from retrieval import HybridRetriever
-from retrieval.documents import Document, load_documents
+from retrieval.knowledge_base import KnowledgeBase
 from tools.scanner import FileInfo
 
 
@@ -101,18 +101,25 @@ class MigrationRunner:
 
     def _retrieve(self) -> None:
         self.state.transition(Phase.RETRIEVE)
-        docs: list[Document] = []
+        kb = KnowledgeBase(self.config.retrieval.kb_dir)
         for path in self.docs:
-            docs.extend(load_documents(path))
+            stats = kb.import_source(path)
+            self.state.add_audit(
+                "retrieve_examples",
+                f"导入知识库: {path}（新增 {stats['added']}，更新 {stats['updated']}，跳过 {stats['skipped']}）",
+                {"path": str(path), **stats},
+            )
+
+        docs = kb.documents()
         self.state.add_audit(
             "retrieve_examples",
-            f"导入文档 {len(docs)} 篇",
-            {"doc_count": len(docs)},
+            f"知识库共 {len(docs)} 篇文档",
+            {"doc_count": len(docs), "kb_dir": str(kb.root)},
         )
         if docs:
-            self.retriever = HybridRetriever(self.config.retrieval)
-            self.retriever.index(docs)
+            self.retriever = kb.build_retriever(self.config.retrieval)
             self.ctx.retriever = self.retriever
+        self.kb = kb
         self.workspace.save_state()
 
     def _plan(self, files: list[FileInfo]) -> list[PlanItem]:

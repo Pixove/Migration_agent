@@ -88,6 +88,33 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(counts["apply_patch"], 2)
             self.assertEqual(counts["run_verifier"], 2)
 
+    def test_full_flow_with_docs_and_kb(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            docs = Path(tmp) / "docs"
+            source.mkdir()
+            docs.mkdir()
+            (source / "a.py").write_text("print('hello')\n", encoding="utf-8")
+            (docs / "guide.txt").write_text(
+                "migration best practice\n",
+                encoding="utf-8",
+            )
+
+            config = load_config("config.yaml")
+            config.retrieval.kb_dir = str(Path(tmp) / "kb")
+            runner = MigrationRunner(
+                config,
+                source,
+                output,
+                docs=[docs],
+                no_llm=True,
+            )
+            state = runner.run()
+
+            self.assertEqual(state.phase, Phase.DONE)
+            self.assertTrue((Path(tmp) / "kb" / "kb.json").is_file())
+
 
 if __name__ == "__main__":
     unittest.main()

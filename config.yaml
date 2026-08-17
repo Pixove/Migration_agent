@@ -32,6 +32,9 @@ workspace:
   max_total_patches: 200
 
 retrieval:
+  # 知识库目录，保存已导入文档的清单与内容缓存
+  kb_dir: kb
+
   bm25:
     enabled: true
     top_k: 20

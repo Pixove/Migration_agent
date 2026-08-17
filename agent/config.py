@@ -36,6 +36,7 @@ class WorkspaceConfig:
 
 @dataclass
 class RetrievalConfig:
+    kb_dir: str = "kb"
     bm25_enabled: bool = True
     bm25_top_k: int = 20
     vector_enabled: bool = False
@@ -144,6 +145,7 @@ def _build_retrieval_config(section: dict[str, Any]) -> RetrievalConfig:
     rerank = _get(section, "rerank", {}) or {}
 
     return RetrievalConfig(
+        kb_dir=str(_get(section, "kb_dir", "kb")),
         bm25_enabled=bool(_get(bm25, "enabled", True)),
         bm25_top_k=int(_get(bm25, "top_k", 20)),
         vector_enabled=bool(_get(vector, "enabled", False)),
