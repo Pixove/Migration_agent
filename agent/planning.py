@@ -34,6 +34,19 @@ def build_fallback_plan(files: list[str]) -> list[PlanItem]:
     ]
 
 
+def refactor_ratio(plan_items: list[PlanItem], file_lines: dict[str, int]) -> float:
+    """计算计划中 transform 动作涉及的代码占比。"""
+    total = sum(file_lines.values())
+    if total <= 0:
+        return 0.0
+    changed = sum(
+        file_lines[item.file]
+        for item in plan_items
+        if item.action == "transform" and item.file in file_lines
+    )
+    return changed / total
+
+
 def build_plan_messages(
     files: list[str],
     evidence: list[dict] | None = None,

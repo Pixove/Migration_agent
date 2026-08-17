@@ -1,5 +1,7 @@
-# Migration Agent 全局配置
-# 修改后重启 CLI 生效
+# Migration Agent 配置模板
+# 首次使用请复制为 config.yaml：
+#   Copy-Item config.example.yaml config.yaml
+# config.yaml 已被 .gitignore 忽略，不会提交到仓库
 
 llm:
   # 可选值: openai | ollama
@@ -15,7 +17,7 @@ llm:
     # 从环境变量读取密钥，避免写入配置文件
     api_key_env: OPENAI_API_KEY
     model: gpt-4o-mini
-    # 国产模型 (以DeepSeek为例) 预设：取消注释下面三行即可切换
+    # DeepSeek 预设：取消注释下面三行即可切换
     # base_url: https://api.deepseek.com/v1
     # api_key_env: DEEPSEEK_API_KEY
     # model: deepseek-chat

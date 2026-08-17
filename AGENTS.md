@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | `AGENTS.md` | Agent 行为入口（非程序入口），只供 AI Agent 阅读 | 每次任务开始必读 |
 | `main.py` | CLI 程序运行入口，接收两条路径 | 启动与入口相关 |
-| `config.yaml` | 全局配置，LLM 切换 | 配置相关 |
+| `config.yaml` / `config.example.yaml` | 全局配置（本地文件/模板），LLM 切换 | 配置相关 |
 | `agent/config.py` | 配置加载与校验 | 配置相关 |
 | `agent/llm.py` | OpenAI 兼容 / Ollama 适配 | 模型相关 |
 | `agent/guardrails.py` | 路径沙箱、白名单、预算、审批 | 任何改动前必读 |

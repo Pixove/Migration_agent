@@ -61,6 +61,7 @@ class GuardrailsConfig:
     )
     auto_apply_max_impact: str = "low"
     require_approval_impact: list[str] = field(default_factory=lambda: ["medium", "high"])
+    max_refactor_ratio: float = 0.3
     deny_extensions: list[str] = field(
         default_factory=lambda: [".pyc", ".pdb", ".exe", ".dll", ".so", ".dylib", ".bin", ".dat"]
     )
@@ -175,6 +176,7 @@ def _build_guardrails_config(section: dict[str, Any]) -> GuardrailsConfig:
         allowed_tools=list(tools),
         auto_apply_max_impact=impact,
         require_approval_impact=list(approval_impacts),
+        max_refactor_ratio=float(_get(section, "max_refactor_ratio", 0.3)),
         deny_extensions=list(_get(section, "deny_extensions", [])),
         max_file_size_mb=int(_get(section, "max_file_size_mb", 5)),
         excluded_dirs=list(_get(section, "excluded_dirs", [])),
@@ -183,7 +185,12 @@ def _build_guardrails_config(section: dict[str, Any]) -> GuardrailsConfig:
 
 def load_config(path: str | Path) -> AppConfig:
     """从 YAML 文件加载并校验全局配置。"""
-    data = _read_yaml(Path(path))
+    target = Path(path)
+    if not target.is_file() and target.name == "config.yaml":
+        example = target.parent / "config.example.yaml"
+        if example.is_file():
+            target = example
+    data = _read_yaml(target)
     return AppConfig(
         llm=_build_llm_config(_get(data, "llm", {})),
         workspace=_build_workspace_config(_get(data, "workspace", {})),

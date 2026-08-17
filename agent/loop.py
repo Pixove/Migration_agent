@@ -5,9 +5,9 @@ from pathlib import Path
 
 from agent.config import AppConfig
 from agent.dispatcher import ToolDispatcher
-from agent.guardrails import Budget, build_guardrails
+from agent.guardrails import Budget, GuardrailError, build_guardrails
 from agent.llm import create_llm_client
-from agent.planning import build_fallback_plan
+from agent.planning import build_fallback_plan, refactor_ratio
 from agent.state import AuditWorkspace, MigrationState, Phase, PlanItem
 from agent.tooling import ToolContext, register_tools
 from retrieval import HybridRetriever
@@ -28,11 +28,15 @@ class MigrationRunner:
         no_llm: bool = False,
         auto_approve: bool = False,
         confirm: Callable[[PlanItem], bool] | None = None,
+        large_refactor_confirm: Callable[[float], bool] | None = None,
     ) -> None:
         self.config = config
         self.docs = docs or []
         self.auto_approve = auto_approve
         self._confirm = confirm or self._default_confirm
+        self._large_refactor_confirm = (
+            large_refactor_confirm or self._default_large_refactor_confirm
+        )
 
         self.guard, self.tools, self.approval = build_guardrails(
             config.guardrails,
@@ -151,6 +155,8 @@ class MigrationRunner:
                 f"计划工具失败，使用回退计划: {result.error}",
             )
 
+        self._enforce_refactor_threshold(plan, files)
+
         for item in plan:
             self.budget.record_plan_item()
             self.state.add_plan_item(item)
@@ -161,6 +167,28 @@ class MigrationRunner:
         )
         self.workspace.save_state()
         return plan
+
+    def _enforce_refactor_threshold(
+        self,
+        plan: list[PlanItem],
+        files: list[FileInfo],
+    ) -> float:
+        """重构比例超过阈值时必须征得用户同意。"""
+        file_lines = {file.relative_path: file.line_count for file in files}
+        ratio = refactor_ratio(plan, file_lines)
+        threshold = self.config.guardrails.max_refactor_ratio
+        if ratio > threshold:
+            if not self._large_refactor_confirm(ratio):
+                raise GuardrailError(
+                    f"重构比例 {ratio:.1%} 超过阈值 {threshold:.1%}，"
+                    "未获得用户同意，任务终止"
+                )
+            self.state.add_audit(
+                "propose_plan",
+                f"大规模重构 {ratio:.1%} 已获得用户同意",
+                {"ratio": ratio},
+            )
+        return ratio
 
     def _collect_evidence(
         self,
@@ -293,5 +321,12 @@ class MigrationRunner:
         answer = input(
             f"计划 [{item.id}] 影响面为 {item.impact}，"
             f"是否应用到 {item.file}? [y/N]: "
+        ).strip().lower()
+        return answer in {"y", "yes"}
+
+    @staticmethod
+    def _default_large_refactor_confirm(ratio: float) -> bool:
+        answer = input(
+            f"重构比例 {ratio:.1%} 超过阈值，是否继续? [y/N]: "
         ).strip().lower()
         return answer in {"y", "yes"}

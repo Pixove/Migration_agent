@@ -11,6 +11,7 @@
 
 ```bash
 python -m pip install -r requirements.txt
+Copy-Item config.example.yaml config.yaml
 python main.py
 ```
 
@@ -19,6 +20,9 @@ python main.py
 ```bash
 python main.py --source D:\legacy_project --output D:\migrated_project
 ```
+
+`config.yaml` 是本地配置，已被 `.gitignore` 忽略，不会提交到仓库；
+模板放在 `config.example.yaml`。
 
 ## 两个入口文件
 

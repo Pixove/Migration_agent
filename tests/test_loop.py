@@ -5,11 +5,13 @@ import unittest
 from pathlib import Path
 
 from agent.config import load_config
+from agent.guardrails import GuardrailError
 from agent.llm import LLMError
 from agent.loop import MigrationRunner
-from agent.planning import build_fallback_plan, generate_llm_plan
-from agent.state import Phase
+from agent.planning import build_fallback_plan, generate_llm_plan, refactor_ratio
+from agent.state import Phase, PlanItem
 from retrieval.knowledge_base import KnowledgeBase
+from tools.scanner import FileInfo
 
 
 class PlanningTests(unittest.TestCase):
@@ -17,6 +19,26 @@ class PlanningTests(unittest.TestCase):
         plan = build_fallback_plan(["a.py", "b.py"])
         self.assertEqual([item.file for item in plan], ["a.py", "b.py"])
         self.assertTrue(all(item.action == "copy" for item in plan))
+
+    def test_refactor_ratio_counts_transform_only(self):
+        plan = [
+            PlanItem(
+                id="p1",
+                file="a.py",
+                issue="x",
+                action="transform",
+                impact="low",
+            ),
+            PlanItem(
+                id="p2",
+                file="b.py",
+                issue="x",
+                action="copy",
+                impact="low",
+            ),
+        ]
+        ratio = refactor_ratio(plan, {"a.py": 4, "b.py": 6})
+        self.assertAlmostEqual(ratio, 0.4)
 
 
 class FakeLLM:
@@ -173,6 +195,47 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue(evidence)
             self.assertTrue(pool)
             self.assertEqual(evidence[0]["file"], "a.py")
+
+    def test_refactor_threshold_blocks_without_consent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+
+            config = load_config("config.yaml")
+            plan = [
+                PlanItem(
+                    id="p1",
+                    file="a.py",
+                    issue="x",
+                    action="transform",
+                    impact="low",
+                )
+            ]
+            files = [
+                FileInfo("a.py", ".py", 40, 10),
+                FileInfo("b.py", ".py", 10, 2),
+            ]
+
+            runner = MigrationRunner(
+                config,
+                source,
+                output,
+                no_llm=True,
+                large_refactor_confirm=lambda ratio: False,
+            )
+            with self.assertRaises(GuardrailError):
+                runner._enforce_refactor_threshold(plan, files)
+
+            runner_ok = MigrationRunner(
+                config,
+                source,
+                output,
+                no_llm=True,
+                large_refactor_confirm=lambda ratio: True,
+            )
+            ratio = runner_ok._enforce_refactor_threshold(plan, files)
+            self.assertAlmostEqual(ratio, 10 / 12)
 
 
 if __name__ == "__main__":
