@@ -32,7 +32,7 @@ def verify_file(path: str | Path) -> VerifierResult:
 
     if target.suffix.lower() == ".py":
         try:
-            ast.parse(target.read_text(encoding="utf-8"))
+            ast.parse(target.read_text(encoding="utf-8-sig"))
             checks.append(CheckResult("syntax", True))
         except SyntaxError as exc:
             checks.append(CheckResult("syntax", False, str(exc)))

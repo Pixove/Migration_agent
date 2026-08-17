@@ -68,7 +68,7 @@ def scan_project(
 
 def _count_lines(path: Path) -> int:
     try:
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        text = path.read_text(encoding="utf-8-sig", errors="ignore")
     except OSError:
         return 0
     return len(text.splitlines())

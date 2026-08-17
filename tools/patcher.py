@@ -31,7 +31,7 @@ def apply_plan_item(
     output_path = guard.resolve_output(item.file)
 
     try:
-        source_text = source_path.read_text(encoding="utf-8", errors="ignore")
+        source_text = source_path.read_text(encoding="utf-8-sig", errors="ignore")
     except OSError as exc:
         return PatchResult(success=False, error=f"读取源文件失败: {exc}")
 

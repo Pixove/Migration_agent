@@ -84,6 +84,26 @@ class PatcherTests(unittest.TestCase):
             with self.assertRaises(GuardrailError):
                 apply_plan_item(item, PathGuard(root, output))
 
+    def test_bom_source_file_passes_verification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            root.mkdir()
+            output.mkdir()
+            (root / "a.py").write_bytes(b"\xef\xbb\xbfprint('hello')\n")
+
+            item = PlanItem(
+                id="p3",
+                file="a.py",
+                issue="skeleton",
+                action="copy",
+                impact="low",
+            )
+            result = apply_plan_item(item, PathGuard(root, output))
+
+            self.assertTrue(result.success)
+            self.assertTrue(verify_file(result.output_path).success)
+
 
 class VerifierTests(unittest.TestCase):
     def test_python_syntax_check(self):
