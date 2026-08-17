@@ -64,6 +64,8 @@ def _retrieve_examples(
 def _propose_plan(
     ctx: ToolContext,
     files: list[str] | None = None,
+    evidence: list[dict] | None = None,
+    evidence_pool: list[str] | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     file_paths = files or [file.relative_path for file in ctx.files]
@@ -74,11 +76,17 @@ def _propose_plan(
             "error": None,
         }
     try:
-        plan = generate_llm_plan(ctx.llm, file_paths)
+        plan = generate_llm_plan(
+            ctx.llm,
+            file_paths,
+            evidence=evidence,
+            evidence_pool=evidence_pool,
+        )
         return {
             "source": "llm",
             "items": [asdict(item) for item in plan],
             "error": None,
+            "evidence_count": len(evidence or []),
         }
     except LLMError as exc:
         return {

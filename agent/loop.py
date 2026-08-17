@@ -126,7 +126,13 @@ class MigrationRunner:
         self.state.transition(Phase.PLAN)
         file_paths = sorted(file.relative_path for file in files)
 
-        result = self.dispatcher.call("propose_plan", files=file_paths)
+        evidence, evidence_pool = self._collect_evidence(file_paths)
+        result = self.dispatcher.call(
+            "propose_plan",
+            files=file_paths,
+            evidence=evidence,
+            evidence_pool=evidence_pool,
+        )
         if result.success:
             payload = result.result
             plan = [PlanItem(**item) for item in payload["items"]]
@@ -155,6 +161,46 @@ class MigrationRunner:
         )
         self.workspace.save_state()
         return plan
+
+    def _collect_evidence(
+        self,
+        file_paths: list[str],
+    ) -> tuple[list[dict], list[str]]:
+        """为每个文件检索 Top-K 范例，并汇总证据文档 ID。"""
+        if self.retriever is None:
+            return [], []
+
+        evidence: list[dict] = []
+        pool: set[str] = set()
+        for file_path in file_paths:
+            source_path = self.guard.resolve_source(file_path)
+            snippet = ""
+            try:
+                snippet = source_path.read_text(
+                    encoding="utf-8-sig",
+                    errors="ignore",
+                )[:200]
+            except OSError:
+                snippet = ""
+
+            query = f"{file_path} {snippet}".strip()
+            hits = self.retriever.search(query, top_k=3)
+            evidence.append(
+                {
+                    "file": file_path,
+                    "hits": [
+                        {
+                            "doc_id": hit.document.doc_id,
+                            "score": hit.score,
+                            "source": hit.source,
+                            "snippet": hit.document.text[:200],
+                        }
+                        for hit in hits
+                    ],
+                }
+            )
+            pool.update(hit.document.doc_id for hit in hits)
+        return evidence, sorted(pool)
 
     def _apply(self) -> None:
         self.state.transition(Phase.APPLY)

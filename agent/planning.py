@@ -54,9 +54,14 @@ def build_plan_messages(
     ]
 
 
-def generate_llm_plan(client: LLMClient, files: list[str]) -> list[PlanItem]:
+def generate_llm_plan(
+    client: LLMClient,
+    files: list[str],
+    evidence: list[dict] | None = None,
+    evidence_pool: list[str] | None = None,
+) -> list[PlanItem]:
     """让大模型生成迁移计划，并严格校验每条计划。"""
-    messages = build_plan_messages(files)
+    messages = build_plan_messages(files, evidence=evidence)
     payload = client.complete_json(messages, max_tokens=4096)
     items = payload.get("items")
     if not isinstance(items, list):
@@ -80,7 +85,14 @@ def generate_llm_plan(client: LLMClient, files: list[str]) -> list[PlanItem]:
         if impact not in VALID_IMPACT_LEVELS:
             raise LLMError(f"第 {index} 条计划 impact 非法: {impact}")
 
-        evidence = raw.get("evidence")
+        evidence_data = raw.get("evidence")
+        if not isinstance(evidence_data, dict) or not evidence_data:
+            raise LLMError(f"第 {index} 条计划缺少证据")
+        if evidence_pool is not None:
+            referenced = _evidence_doc_ids(evidence_data)
+            if not referenced.intersection(set(evidence_pool)):
+                raise LLMError(f"第 {index} 条计划证据未关联检索命中")
+
         plan.append(
             PlanItem(
                 id=f"p{index}",
@@ -88,7 +100,20 @@ def generate_llm_plan(client: LLMClient, files: list[str]) -> list[PlanItem]:
                 issue=str(raw.get("issue", "未说明问题")),
                 action=action,
                 impact=impact,
-                evidence=evidence if isinstance(evidence, dict) else {},
+                evidence=evidence_data,
             )
         )
     return plan
+
+
+def _evidence_doc_ids(evidence: dict) -> set[str]:
+    """从证据结构中提取引用的文档 ID。"""
+    referenced: set[str] = set()
+    for value in evidence.values():
+        if isinstance(value, str):
+            referenced.add(value)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, str):
+                    referenced.add(item)
+    return referenced

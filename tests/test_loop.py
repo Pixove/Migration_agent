@@ -9,6 +9,7 @@ from agent.llm import LLMError
 from agent.loop import MigrationRunner
 from agent.planning import build_fallback_plan, generate_llm_plan
 from agent.state import Phase
+from retrieval.knowledge_base import KnowledgeBase
 
 
 class PlanningTests(unittest.TestCase):
@@ -36,12 +37,44 @@ class LLMPlanTests(unittest.TestCase):
                         "issue": "语法过时",
                         "action": "copy",
                         "impact": "low",
+                        "evidence": {"doc_id": "d1"},
                     }
                 ]
             }
         )
-        plan = generate_llm_plan(client, ["a.py"])
+        plan = generate_llm_plan(client, ["a.py"], evidence_pool=["d1"])
         self.assertEqual(plan[0].file, "a.py")
+
+    def test_plan_without_evidence_is_rejected(self):
+        client = FakeLLM(
+            {
+                "items": [
+                    {
+                        "file": "a.py",
+                        "issue": "x",
+                        "action": "copy",
+                        "impact": "low",
+                    }
+                ]
+            }
+        )
+        with self.assertRaises(LLMError):
+            generate_llm_plan(client, ["a.py"])
+
+    def test_evidence_must_reference_retrieval_pool(self):
+        item = {
+            "file": "a.py",
+            "issue": "x",
+            "action": "copy",
+            "impact": "low",
+            "evidence": {"doc_id": "d1"},
+        }
+        client = FakeLLM({"items": [item]})
+        plan = generate_llm_plan(client, ["a.py"], evidence_pool=["d1"])
+        self.assertEqual(plan[0].evidence, {"doc_id": "d1"})
+
+        with self.assertRaises(LLMError):
+            generate_llm_plan(client, ["a.py"], evidence_pool=["d2"])
 
     def test_file_outside_scan_is_rejected(self):
         client = FakeLLM(
@@ -114,6 +147,32 @@ class RunnerTests(unittest.TestCase):
 
             self.assertEqual(state.phase, Phase.DONE)
             self.assertTrue((Path(tmp) / "kb" / "kb.json").is_file())
+
+    def test_evidence_collection_uses_retriever(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            docs = Path(tmp) / "docs"
+            source.mkdir()
+            docs.mkdir()
+            (source / "a.py").write_text("print('hello')\n", encoding="utf-8")
+            (docs / "guide.txt").write_text(
+                "print statement migration\n",
+                encoding="utf-8",
+            )
+
+            config = load_config("config.yaml")
+            config.retrieval.kb_dir = str(Path(tmp) / "kb")
+            runner = MigrationRunner(config, source, output, docs=[docs], no_llm=True)
+            kb = KnowledgeBase(config.retrieval.kb_dir)
+            kb.import_source(docs)
+            runner.retriever = kb.build_retriever(config.retrieval)
+            runner.ctx.retriever = runner.retriever
+
+            evidence, pool = runner._collect_evidence(["a.py"])
+            self.assertTrue(evidence)
+            self.assertTrue(pool)
+            self.assertEqual(evidence[0]["file"], "a.py")
 
 
 if __name__ == "__main__":
