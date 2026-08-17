@@ -1,65 +1,158 @@
 # Migration Agent
 
-企业级代码库现代化迁移 Agent 的项目骨架。目标是让用户通过命令行指定两个路径：
+企业级代码库现代化迁移 Agent。用户通过命令行指定两条路径：待迁移的
+遗留项目路径（只读）与迁移后输出路径（唯一可写区域）。迁移方案由
+大模型生成，harness 负责校验、执行、验证与审计。
 
-1. 待迁移的遗留项目路径（只读）；
-2. 迁移后输出路径（唯一可写区域）。
+## 功能特性
 
-迁移方案由大模型生成，harness 负责校验、执行、验证与审计，约束 Agent 的行为边界，避免越权修改、无依据替换和不可追溯的变更。
+- 双路径 CLI，输入项目只读，输出目录唯一可写；
+- 大模型生成迁移计划，支持 OpenAI 兼容服务与 Ollama；
+- RAG 混合检索：BM25 精确匹配 + 向量语义检索 + Cross-Encoder 重排；
+- 内置 Python 2 到 3 迁移知识库；
+- 工具白名单、路径沙箱、预算限制、影响面审批；
+- 30% 大规模重构阈值，超限必须用户同意；
+- 计划证据强制关联检索命中，禁止无依据修改；
+- Python 2 到 3 基础语法转换规则；
+- 验证失败自动回滚，完整审计与中文报告。
 
 ## 快速开始
 
-```bash
-python -m pip install -r requirements.txt
+### 1. 准备环境
+
+```powershell
+python -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
 Copy-Item config.example.yaml config.yaml
-python main.py
 ```
 
-启动后会交互式询问输入项目路径与输出路径。也可以直接通过参数指定：
+### 2. 配置大模型
 
-```bash
-python main.py --source D:\legacy_project --output D:\migrated_project
+编辑 `config.yaml` 中的 `llm` 段：
+
+- `provider: openai`：任意 OpenAI 兼容服务；
+- `provider: ollama`：本地 Ollama；
+- DeepSeek：取消 `openai` 段内注释的三行预设，并设置环境变量。
+
+API Key 通过环境变量提供，不写入配置文件：
+
+```powershell
+$env:OPENAI_API_KEY = "你的密钥"
 ```
 
-使用内置迁移知识库：
+### 3. 运行迁移
+
+交互模式：
+
+```powershell
+.venv\Scripts\python.exe main.py
+```
+
+完整模式（内置知识库 + 大模型）：
 
 ```powershell
 .venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --docs knowledge_base
 ```
 
-知识库文档位于 `knowledge_base/`，覆盖 Python 2 到 3 语法迁移、
-并发安全、内存泄漏与验证回滚等内容。
+不使用大模型（回退为原样复制）：
 
-`config.yaml` 是本地配置，已被 `.gitignore` 忽略，不会提交到仓库；
-模板放在 `config.example.yaml`。
+```powershell
+.venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --no-llm
+```
 
-## 两个入口文件
+## CLI 参数
 
-- `main.py`：程序运行入口，用户启动 CLI 时执行；
-- `AGENTS.md`：Agent 行为入口，供 AI Agent 阅读，索引 `rules/`、`skills/`、`docs/` 的位置与红线，不包含可执行逻辑。
+| 参数 | 说明 |
+| --- | --- |
+| `--source` | 待迁移项目路径，必须是目录 |
+| `--output` | 迁移输出路径 |
+| `--config` | 配置文件路径，默认 `config.yaml` |
+| `--docs` | 最佳实践文档路径，文件或目录，可多次指定 |
+| `--no-llm` | 不使用大模型，使用回退复制计划 |
+| `--auto-approve` | 跳过 `medium/high` 计划审批 |
+
+## 工作流程
+
+```text
+初始化护栏 → 扫描输入项目 → 导入知识库并检索
+→ LLM 生成计划 → 校验与审批 → 应用补丁 → 验证 → 报告
+```
+
+关键约束：
+
+- 工具必须位于白名单，按名调用并计入调用次数；
+- `low` 影响自动应用，`medium/high` 需要人工审批；
+- 每条修改计划必须引用知识库检索命中；
+- `transform` 涉及代码量超过 30% 时必须用户同意；
+- Python 输出文件必须通过 AST 验证，失败自动回滚。
+
+## 知识库
+
+内置知识库位于 `knowledge_base/`，覆盖：
+
+- Python 2 到 3 语法迁移；
+- 字符串与字节处理；
+- 异常处理迁移；
+- 并发安全最佳实践；
+- 内存泄漏修复；
+- 标准库变更；
+- 风险控制、验证回滚与测试策略。
+
+可追加自定义文档：
+
+```powershell
+.venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --docs knowledge_base --docs D:\docs\company-standard
+```
+
+知识库缓存目录由 `config.yaml` 的 `retrieval.kb_dir` 配置，默认 `kb/`，
+已被 `.gitignore` 忽略。
+
+## 输出与审计
+
+迁移输出位于输出目录，审计数据位于：
+
+```text
+输出目录/
+└─ .migration-agent/
+   ├─ state.json    # 任务状态、计划条目、审计记录
+   ├─ audit.log     # 运行日志
+   └─ report.md     # 中文迁移报告
+```
 
 ## 目录结构
 
 ```text
 migration-agent/
-├─ main.py                 # CLI 入口
-├─ config.yaml             # 全局配置
-├─ agent/                  # 状态机、护栏、LLM 适配
-├─ tools/                  # 扫描、补丁、验证、报告
-├─ retrieval/              # BM25、向量检索、重排
-├─ rules/                  # 中文规则文档
-├─ skills/                 # 中文技能文档
-├─ docs/                   # 中文架构文档
-└─ tests/                  # 单元测试
+├─ main.py                  # CLI 入口
+├─ config.example.yaml      # 配置模板（入库）
+├─ config.yaml              # 本地配置（不入库）
+├─ agent/                   # 状态机、护栏、LLM 适配、调度
+├─ tools/                   # 扫描、补丁、验证、报告
+├─ retrieval/               # 文档导入、BM25、向量、重排、知识库
+├─ migration/               # Python 2 到 3 转换规则
+├─ knowledge_base/          # 内置迁移知识库
+├─ rules/                   # 中文规则文档
+├─ skills/                  # 中文技能文档
+├─ docs/                    # 中文架构与调试文档
+└─ tests/                   # 单元测试
 ```
 
-## 配置
+## 测试
 
-所有配置集中在 `config.yaml`，其中：
+```bash
+.venv\Scripts\python.exe -m unittest discover tests -v
+```
 
-- `llm.provider` 支持 `openai` 与 `ollama`；
-- `llm.openai` 兼容所有 OpenAI 协议的服务；
-- `llm.ollama` 指向本地 Ollama 服务；
-- `guardrails` 控制路径边界、工具白名单、预算与审批分级。
+## 文档入口
 
-详细说明见 `docs/03_配置说明.md`。
+- `AGENTS.md`：Agent 行为入口与文件索引；
+- `rules/`：运行时行为规则与红线；
+- `skills/`：技能使用说明；
+- `docs/`：架构、状态机、配置说明与调试排查。
+
+## 已知限制
+
+- `--source` 目前只接受项目目录，不支持单文件；
+- `transform` 规则为基础集，复杂语法仍需扩展；
+- 向量检索依赖 `sentence-transformers`，PDF 解析依赖 `pypdf`，未安装时对应功能关闭；
+- LLM 生成修改型计划需要知识库文档作为证据来源。
