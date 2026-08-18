@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from agent.config import load_config
 from agent.guardrails import GuardrailError
@@ -137,6 +138,30 @@ class LLMPlanTests(unittest.TestCase):
 
 
 class RunnerTests(unittest.TestCase):
+    def test_default_confirm_supports_approve_all(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            runner = MigrationRunner(
+                load_config("config.yaml"),
+                source,
+                output,
+                no_llm=True,
+            )
+            item = PlanItem(
+                id="p2",
+                file="app.py",
+                issue="x",
+                action="transform",
+                impact="medium",
+            )
+            with patch("builtins.input", return_value="a") as mocked:
+                self.assertTrue(runner._default_confirm(item))
+                self.assertTrue(runner._approve_all_remaining)
+                self.assertTrue(runner._default_confirm(item))
+            self.assertEqual(mocked.call_count, 1)
+
     def test_full_flow_without_llm(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"

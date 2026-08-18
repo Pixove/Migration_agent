@@ -34,6 +34,7 @@ class MigrationRunner:
         self.docs = docs or []
         self.auto_approve = auto_approve
         self._confirm = confirm or self._default_confirm
+        self._approve_all_remaining = False
         self._large_refactor_confirm = (
             large_refactor_confirm or self._default_large_refactor_confirm
         )
@@ -318,12 +319,16 @@ class MigrationRunner:
         self.state.transition(Phase.DONE)
         self.workspace.save_state()
 
-    @staticmethod
-    def _default_confirm(item: PlanItem) -> bool:
+    def _default_confirm(self, item: PlanItem) -> bool:
+        if self._approve_all_remaining:
+            return True
         answer = input(
-            f"计划 [{item.id}] 影响面为 {item.impact}，"
-            f"是否应用到 {item.file}? [y/N]: "
+            f"是否应用 {item.file}？"
+            f"（y 同意 / n 跳过 / a 全部同意）[y/N/a]: "
         ).strip().lower()
+        if answer in {"a", "all", "全部"}:
+            self._approve_all_remaining = True
+            return True
         return answer in {"y", "yes"}
 
     @staticmethod
