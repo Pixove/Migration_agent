@@ -25,6 +25,7 @@
 | `retrieval/` | 文档导入、BM25、向量、重排 | 检索相关 |
 | `migration/` | Python 2 到 3 基础迁移规则 | transform 相关 |
 | `knowledge_base/` | 内置 Python 2 到 3 迁移知识库 | 检索相关 |
+| `examples/` | 示例遗留项目与转换演示 | 演示相关 |
 | `rules/` | 行为规则文档，索引见下方规则索引 | 必读 `00_总则.md`，其余按需 |
 | `skills/` | 技能说明文档，索引见下方技能索引 | 按需 |
 | `docs/` | 架构与设计文档 | 大改前按需 |

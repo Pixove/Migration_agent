@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import tempfile
 import unittest
 from pathlib import Path
@@ -91,6 +92,13 @@ class TransformIntegrationTests(unittest.TestCase):
                 (output / "a.py").read_text(encoding="utf-8"),
                 "print('hello')\n",
             )
+
+    def test_legacy_demo_transforms_to_valid_python3(self):
+        source = Path(
+            "examples/legacy_demo/python2_demo.py"
+        ).read_text(encoding="utf-8-sig")
+        migrated = transform_python2_to_3(source)
+        ast.parse(migrated)
 
 
 if __name__ == "__main__":
