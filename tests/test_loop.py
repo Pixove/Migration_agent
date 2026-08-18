@@ -45,6 +45,11 @@ class FakeLLM:
     def __init__(self, payload: dict):
         self.payload = payload
 
+    def complete(self, messages, **kwargs):
+        import json
+
+        return json.dumps(self.payload, ensure_ascii=False)
+
     def complete_json(self, messages, **kwargs):
         return self.payload
 
@@ -74,7 +79,7 @@ class LLMPlanTests(unittest.TestCase):
                     {
                         "file": "a.py",
                         "issue": "x",
-                        "action": "copy",
+                        "action": "transform",
                         "impact": "low",
                     }
                 ]
@@ -83,11 +88,27 @@ class LLMPlanTests(unittest.TestCase):
         with self.assertRaises(LLMError):
             generate_llm_plan(client, ["a.py"])
 
+    def test_copy_without_evidence_is_accepted(self):
+        client = FakeLLM(
+            {
+                "items": [
+                    {
+                        "file": "a.py",
+                        "issue": "x",
+                        "action": "copy",
+                        "impact": "low",
+                    }
+                ]
+            }
+        )
+        plan = generate_llm_plan(client, ["a.py"])
+        self.assertEqual(plan[0].evidence, {})
+
     def test_evidence_must_reference_retrieval_pool(self):
         item = {
             "file": "a.py",
             "issue": "x",
-            "action": "copy",
+            "action": "transform",
             "impact": "low",
             "evidence": {"doc_id": "d1"},
         }
@@ -195,6 +216,10 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue(evidence)
             self.assertTrue(pool)
             self.assertEqual(evidence[0]["file"], "a.py")
+            self.assertLessEqual(len(evidence[0]["hits"]), 2)
+            self.assertTrue(
+                all(len(hit["snippet"]) <= 100 for hit in evidence[0]["hits"])
+            )
 
     def test_refactor_threshold_blocks_without_consent(self):
         with tempfile.TemporaryDirectory() as tmp:

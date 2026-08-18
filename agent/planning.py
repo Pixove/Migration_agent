@@ -4,10 +4,11 @@ import json
 
 from agent.config import VALID_IMPACT_LEVELS
 from agent.context_loader import build_planning_context
-from agent.llm import LLMClient, LLMError
+from agent.llm import LLMClient, LLMError, parse_json_object
 from agent.state import PlanItem
 
 ALLOWED_ACTIONS = ("copy", "transform")
+PLAN_MAX_TOKENS = 8192
 
 PLAN_SYSTEM_PROMPT = (
     "你是企业级代码库迁移规划器。根据扫描出的文件清单输出迁移计划，"
@@ -75,7 +76,14 @@ def generate_llm_plan(
 ) -> list[PlanItem]:
     """让大模型生成迁移计划，并严格校验每条计划。"""
     messages = build_plan_messages(files, evidence=evidence)
-    payload = client.complete_json(messages, max_tokens=4096)
+    raw = client.complete(messages, max_tokens=PLAN_MAX_TOKENS)
+    try:
+        payload = parse_json_object(raw)
+    except LLMError as exc:
+        raise LLMError(
+            f"{exc}\n原始响应前 2000 字符: {raw[:2000]}"
+        ) from exc
+
     items = payload.get("items")
     if not isinstance(items, list):
         raise LLMError("模型计划响应缺少 items 数组")
@@ -99,12 +107,15 @@ def generate_llm_plan(
             raise LLMError(f"第 {index} 条计划 impact 非法: {impact}")
 
         evidence_data = raw.get("evidence")
-        if not isinstance(evidence_data, dict) or not evidence_data:
-            raise LLMError(f"第 {index} 条计划缺少证据")
-        if evidence_pool is not None:
-            referenced = _evidence_doc_ids(evidence_data)
-            if not referenced.intersection(set(evidence_pool)):
-                raise LLMError(f"第 {index} 条计划证据未关联检索命中")
+        if action == "transform":
+            if not isinstance(evidence_data, dict) or not evidence_data:
+                raise LLMError(f"第 {index} 条计划缺少证据")
+            if evidence_pool is not None:
+                referenced = _evidence_doc_ids(evidence_data)
+                if not referenced.intersection(set(evidence_pool)):
+                    raise LLMError(f"第 {index} 条计划证据未关联检索命中")
+        else:
+            evidence_data = evidence_data if isinstance(evidence_data, dict) else {}
 
         plan.append(
             PlanItem(

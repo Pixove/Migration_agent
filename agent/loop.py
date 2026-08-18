@@ -201,18 +201,20 @@ class MigrationRunner:
         evidence: list[dict] = []
         pool: set[str] = set()
         for file_path in file_paths:
+            if not file_path.endswith(".py"):
+                continue
             source_path = self.guard.resolve_source(file_path)
             snippet = ""
             try:
                 snippet = source_path.read_text(
                     encoding="utf-8-sig",
                     errors="ignore",
-                )[:200]
+                )[:100]
             except OSError:
                 snippet = ""
 
             query = f"{file_path} {snippet}".strip()
-            hits = self.retriever.search(query, top_k=3)
+            hits = self.retriever.search(query, top_k=2)
             evidence.append(
                 {
                     "file": file_path,
@@ -221,7 +223,7 @@ class MigrationRunner:
                             "doc_id": hit.document.doc_id,
                             "score": hit.score,
                             "source": hit.source,
-                            "snippet": hit.document.text[:200],
+                            "snippet": hit.document.text[:100],
                         }
                         for hit in hits
                     ],
