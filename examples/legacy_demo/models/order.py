@@ -7,6 +7,7 @@ class Order(object):
 
     def subtotal(self):
         total = 0
-        for product, count in self.items:
+        for i in xrange(len(self.items)):
+            product, count = self.items[i]
             total += product.price * count
         return total

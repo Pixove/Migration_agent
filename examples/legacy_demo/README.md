@@ -11,22 +11,25 @@ legacy_demo/
 ├─ python2_demo.py      # 含 Python 2 语法，需要 transform
 ├─ models/
 │  ├─ product.py        # 商品模型，含 basestring/unicode/long
-│  └─ order.py          # 订单模型
+│  ├─ order.py          # 订单模型，含 xrange
+│  └─ customer.py       # 客户模型，含 basestring/unicode
 ├─ services/
 │  ├─ pricing.py        # 阶梯折扣与积分，含 xrange
 │  └─ report.py         # 报表打印，含 print 语句与 unicode 字面量
 ├─ utils/
 │  ├─ helper.py         # 工具函数
-│  └─ storage.py        # 商品加载，含 except 逗号语法
+│  ├─ storage.py        # 商品与客户加载，含 except 逗号语法
+│  └─ cli.py            # 交互函数，含 raw_input（默认不调用）
 └─ data/
    ├─ products.txt      # 商品数据
+   ├─ customers.txt     # 客户数据
    └─ notes.txt         # 普通文本
 ```
 
 ## 项目功能
 
-一个小型订单系统：从 `data/products.txt` 加载商品，生成订单，
-按金额计算阶梯折扣，输出订单明细、合计与积分。
+一个小型订单系统：加载商品与客户，生成订单，按金额计算阶梯折扣，
+会员额外享受 9 折，输出订单明细、金额与积分。
 
 ## 完整迁移（大模型 + 内置知识库）
 
@@ -55,11 +58,13 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 
 ```text
 === 订单明细 ===
+客户: 张三 会员: V
 苹果 x 1 = 100
 香蕉 x 1 = 50
 橙子 x 1 = 120
---- 合计 ---
-总计: 243
+--- 金额 ---
+小计: 270
+会员价: 218
 积分: 0
 ```
 

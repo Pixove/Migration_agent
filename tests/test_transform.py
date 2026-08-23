@@ -100,6 +100,15 @@ class TransformIntegrationTests(unittest.TestCase):
         migrated = transform_python2_to_3(source)
         ast.parse(migrated)
 
+    def test_all_demo_py_files_transform_to_valid_python3(self):
+        source = Path("examples/legacy_demo")
+        py_files = [path for path in source.rglob("*.py") if path.is_file()]
+        self.assertGreater(len(py_files), 5)
+        for file in py_files:
+            text = file.read_text(encoding="utf-8-sig")
+            migrated = transform_python2_to_3(text)
+            ast.parse(migrated)
+
 
 if __name__ == "__main__":
     unittest.main()

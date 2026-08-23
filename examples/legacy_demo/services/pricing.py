@@ -1,5 +1,4 @@
-def apply_tier_discount(order):
-    total = order.subtotal()
+def apply_tier_discount(total):
     if total >= 500:
         discount = 0.2
     elif total >= 200:
@@ -7,6 +6,12 @@ def apply_tier_discount(order):
     else:
         discount = 0.0
     return int(total * (1 - discount))
+
+
+def apply_member_discount(total, customer):
+    if customer.is_member():
+        return int(total * 0.9)
+    return total
 
 
 def bulk_bonus(order):
