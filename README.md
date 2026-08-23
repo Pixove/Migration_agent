@@ -60,6 +60,38 @@ $env:OPENAI_API_KEY = "你的密钥"
 .venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --no-llm
 ```
 
+## 示例项目
+
+仓库内置一个多模块 Python 2 遗留示例项目，用于测试迁移效果：
+
+```text
+examples/legacy_demo/
+├─ main.py               # 订单系统入口
+├─ models/               # 商品与订单模型
+├─ services/             # 折扣计算与报表
+├─ utils/                # 数据加载与工具函数
+└─ data/products.txt     # 商品数据
+```
+
+迁移示例项目：
+
+```powershell
+.venv\Scripts\python.exe main.py --source examples\legacy_demo --output D:\demo_migrated --docs knowledge_base
+```
+
+迁移完成后在输出目录运行：
+
+```powershell
+cd D:\demo_migrated
+D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
+```
+
+不启动完整流程，快速查看规则转换效果：
+
+```powershell
+.venv\Scripts\python.exe examples\transform_demo.py
+```
+
 ## CLI 参数
 
 | 参数 | 说明 |
@@ -131,6 +163,7 @@ migration-agent/
 ├─ retrieval/               # 文档导入、BM25、向量、重排、知识库
 ├─ migration/               # Python 2 到 3 转换规则
 ├─ knowledge_base/          # 内置迁移知识库
+├─ examples/                # 示例遗留项目与转换演示
 ├─ rules/                   # 中文规则文档
 ├─ skills/                  # 中文技能文档
 ├─ docs/                    # 中文架构与调试文档
