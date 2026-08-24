@@ -110,6 +110,7 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 | `--docs` | 最佳实践文档路径，文件或目录，可多次指定 |
 | `--no-llm` | 不使用大模型，使用回退复制计划 |
 | `--auto-approve` | 跳过 `medium/high` 计划审批 |
+| `--chat` | 使用对话引导模式确认迁移目标与路径 |
 
 ## 工作流程
 

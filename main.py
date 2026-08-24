@@ -4,7 +4,9 @@ import argparse
 import sys
 from pathlib import Path
 
+from agent.chat import ChatSession
 from agent.config import ConfigError, load_config
+from agent.llm import create_llm_client
 from agent.loop import MigrationRunner
 
 
@@ -35,6 +37,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="跳过人工审批，自动应用所有计划",
     )
+    parser.add_argument(
+        "--chat",
+        action="store_true",
+        help="使用对话引导模式确认迁移目标与路径",
+    )
     return parser.parse_args(argv)
 
 
@@ -47,14 +54,26 @@ def main(argv: list[str] | None = None) -> int:
         print(f"配置错误: {exc}", file=sys.stderr)
         return 2
 
-    source = args.source or input("请输入待迁移项目路径: ").strip()
-    output = args.output or input("请输入迁移输出路径: ").strip()
-    if not source or not output:
-        print("输入路径与输出路径不能为空", file=sys.stderr)
-        return 2
-    if not Path(source).is_dir():
-        print(f"输入项目不存在或不是目录: {source}", file=sys.stderr)
-        return 2
+    if args.chat:
+        llm = None if args.no_llm else create_llm_client(config.llm)
+        try:
+            chat_result = ChatSession(config, llm=llm).run()
+        except Exception as exc:
+            print(f"对话引导失败: {exc}", file=sys.stderr)
+            return 1
+        config.migration.profile = chat_result.profile
+        config.migration.scope = chat_result.scope
+        source = chat_result.source
+        output = chat_result.output
+    else:
+        source = args.source or input("请输入待迁移项目路径: ").strip()
+        output = args.output or input("请输入迁移输出路径: ").strip()
+        if not source or not output:
+            print("输入路径与输出路径不能为空", file=sys.stderr)
+            return 2
+        if not Path(source).is_dir():
+            print(f"输入项目不存在或不是目录: {source}", file=sys.stderr)
+            return 2
 
     try:
         runner = MigrationRunner(
