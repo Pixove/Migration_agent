@@ -92,6 +92,14 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 .venv\Scripts\python.exe examples\transform_demo.py
 ```
 
+另有 Python 3.8 风格升级示例 `examples/py38_demo/`：
+
+```powershell
+.venv\Scripts\python.exe main.py --source examples\py38_demo --output D:\py38_migrated --docs knowledge_base/py3_upgrade
+```
+
+迁移完成后在输出目录运行 `main.py` 验证。
+
 ## CLI 参数
 
 | 参数 | 说明 |

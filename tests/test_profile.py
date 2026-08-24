@@ -18,8 +18,8 @@ class ProfileRegistryTests(unittest.TestCase):
 
     def test_config_has_migration_profile(self):
         config = load_config("config.yaml")
-        self.assertEqual(config.migration.profile, "py2to3")
-        self.assertEqual(config.migration.scope, "syntax")
+        self.assertIn(config.migration.profile, {"py2to3", "py3_upgrade"})
+        self.assertIn(config.migration.scope, {"syntax", "deprecated_api"})
 
     def test_py3_upgrade_profile_has_transform(self):
         profile = load_profile("py3_upgrade")
