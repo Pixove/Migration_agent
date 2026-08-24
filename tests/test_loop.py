@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -55,7 +56,39 @@ class FakeLLM:
         return self.payload
 
 
+class FakeBatchedLLM:
+    def __init__(self):
+        self.calls = 0
+
+    def complete(self, messages, **kwargs):
+        self.calls += 1
+        payload = json.loads(messages[1]["content"])
+        items = [
+            {
+                "file": name,
+                "issue": "x",
+                "action": "copy",
+                "impact": "low",
+            }
+            for name in payload["files"]
+        ]
+        return json.dumps({"items": items}, ensure_ascii=False)
+
+    def complete_json(self, messages, **kwargs):
+        return {}
+
+
 class LLMPlanTests(unittest.TestCase):
+    def test_plan_generated_in_batches(self):
+        client = FakeBatchedLLM()
+        files = [f"f{i}.py" for i in range(12)]
+        plan = generate_llm_plan(client, files)
+        self.assertEqual(len(plan), 12)
+        self.assertEqual(client.calls, 3)
+        self.assertEqual(plan[0].id, "p1")
+        self.assertEqual(plan[-1].id, "p12")
+        self.assertEqual([item.file for item in plan], files)
+
     def test_valid_plan_is_accepted(self):
         client = FakeLLM(
             {

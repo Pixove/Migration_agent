@@ -9,6 +9,7 @@ from agent.state import PlanItem
 
 ALLOWED_ACTIONS = ("copy", "transform")
 PLAN_MAX_TOKENS = 8192
+PLAN_BATCH_SIZE = 5
 
 PLAN_SYSTEM_PROMPT = (
     "你是企业级代码库迁移规划器。根据扫描出的文件清单输出迁移计划，"
@@ -74,7 +75,34 @@ def generate_llm_plan(
     evidence: list[dict] | None = None,
     evidence_pool: list[str] | None = None,
 ) -> list[PlanItem]:
-    """让大模型生成迁移计划，并严格校验每条计划。"""
+    """按批让大模型生成迁移计划，并严格校验每条计划。"""
+    evidence_by_file = {entry.get("file"): entry for entry in (evidence or [])}
+    plan: list[PlanItem] = []
+
+    for start in range(0, len(files), PLAN_BATCH_SIZE):
+        batch = files[start : start + PLAN_BATCH_SIZE]
+        batch_evidence = [
+            evidence_by_file[file]
+            for file in batch
+            if file in evidence_by_file
+        ]
+        batch_pool = _evidence_pool_from(batch_evidence) or evidence_pool
+        plan.extend(
+            _generate_batch(client, batch, batch_evidence, batch_pool)
+        )
+
+    for index, item in enumerate(plan, start=1):
+        item.id = f"p{index}"
+    return plan
+
+
+def _generate_batch(
+    client: LLMClient,
+    files: list[str],
+    evidence: list[dict],
+    evidence_pool: list[str] | None,
+) -> list[PlanItem]:
+    """生成并校验一批文件的迁移计划。"""
     messages = build_plan_messages(files, evidence=evidence)
     raw = client.complete(messages, max_tokens=PLAN_MAX_TOKENS)
     try:
@@ -128,6 +156,17 @@ def generate_llm_plan(
             )
         )
     return plan
+
+
+def _evidence_pool_from(evidence: list[dict]) -> list[str]:
+    """从证据列表中汇总命中的文档 ID。"""
+    pool: set[str] = set()
+    for entry in evidence:
+        for hit in entry.get("hits", []):
+            doc_id = hit.get("doc_id")
+            if doc_id:
+                pool.add(doc_id)
+    return sorted(pool)
 
 
 def _evidence_doc_ids(evidence: dict) -> set[str]:
