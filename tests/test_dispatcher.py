@@ -8,6 +8,7 @@ from agent.config import load_config
 from agent.dispatcher import ToolDispatcher, ToolSpec
 from agent.guardrails import Budget, GuardrailError, PathGuard, ToolRegistry
 from agent.tooling import ToolContext, register_tools
+from migration.py2to3 import transform_python2_to_3
 
 
 class DispatcherMechanicsTests(unittest.TestCase):
@@ -62,7 +63,11 @@ class ToolingTests(unittest.TestCase):
 
             config = load_config("config.yaml")
             guard = PathGuard(source, output)
-            ctx = ToolContext(config=config, guard=guard)
+            ctx = ToolContext(
+                config=config,
+                guard=guard,
+                transform=transform_python2_to_3,
+            )
             dispatcher = ToolDispatcher(
                 ToolRegistry(config.guardrails.allowed_tools),
                 Budget(50, 3, 200),

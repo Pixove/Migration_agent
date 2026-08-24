@@ -70,7 +70,11 @@ class TransformIntegrationTests(unittest.TestCase):
 
             config = load_config("config.yaml")
             guard = PathGuard(source, output)
-            ctx = ToolContext(config=config, guard=guard)
+            ctx = ToolContext(
+                config=config,
+                guard=guard,
+                transform=transform_python2_to_3,
+            )
             dispatcher = ToolDispatcher(
                 ToolRegistry(config.guardrails.allowed_tools)
             )

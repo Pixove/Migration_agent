@@ -27,6 +27,12 @@ llm:
     base_url: http://localhost:11434
     model: qwen2.5:7b
 
+migration:
+  # 迁移档案: py2to3 | py3_upgrade
+  profile: py2to3
+  # 改动类别范围: syntax | deprecated_api
+  scope: syntax
+
 workspace:
   # 输出目录内的审计子目录名称
   audit_dir_name: .migration-agent

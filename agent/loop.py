@@ -10,6 +10,7 @@ from agent.llm import create_llm_client
 from agent.planning import build_fallback_plan, refactor_ratio
 from agent.state import AuditWorkspace, MigrationState, Phase, PlanItem
 from agent.tooling import ToolContext, register_tools
+from migration.registry import load_profile
 from retrieval import HybridRetriever
 from retrieval.knowledge_base import KnowledgeBase
 from tools.scanner import FileInfo
@@ -56,6 +57,7 @@ class MigrationRunner:
             max_total_patches=config.workspace.max_total_patches,
         )
         self.llm = None if no_llm else create_llm_client(config.llm)
+        self.profile = load_profile(config.migration.profile)
         self.retriever: HybridRetriever | None = None
         self.ctx = ToolContext(
             config=self.config,
@@ -63,6 +65,7 @@ class MigrationRunner:
             state=self.state,
             workspace=self.workspace,
             llm=self.llm,
+            transform=self.profile.transform,
         )
         self.dispatcher = ToolDispatcher(self.tools, self.budget)
         register_tools(self.dispatcher, self.ctx)

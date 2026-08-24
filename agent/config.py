@@ -48,6 +48,12 @@ class RetrievalConfig:
 
 
 @dataclass
+class MigrationConfig:
+    profile: str = "py2to3"
+    scope: str = "syntax"
+
+
+@dataclass
 class GuardrailsConfig:
     allowed_tools: list[str] = field(
         default_factory=lambda: [
@@ -83,6 +89,7 @@ class GuardrailsConfig:
 @dataclass
 class AppConfig:
     llm: LLMConfig = field(default_factory=LLMConfig)
+    migration: MigrationConfig = field(default_factory=MigrationConfig)
     workspace: WorkspaceConfig = field(default_factory=WorkspaceConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
     guardrails: GuardrailsConfig = field(default_factory=GuardrailsConfig)
@@ -158,6 +165,13 @@ def _build_retrieval_config(section: dict[str, Any]) -> RetrievalConfig:
     )
 
 
+def _build_migration_config(section: dict[str, Any]) -> MigrationConfig:
+    return MigrationConfig(
+        profile=str(_get(section, "profile", "py2to3")),
+        scope=str(_get(section, "scope", "syntax")),
+    )
+
+
 def _build_guardrails_config(section: dict[str, Any]) -> GuardrailsConfig:
     tools = _get(section, "allowed_tools", None)
     if not tools:
@@ -193,6 +207,7 @@ def load_config(path: str | Path) -> AppConfig:
     data = _read_yaml(target)
     return AppConfig(
         llm=_build_llm_config(_get(data, "llm", {})),
+        migration=_build_migration_config(_get(data, "migration", {})),
         workspace=_build_workspace_config(_get(data, "workspace", {})),
         retrieval=_build_retrieval_config(_get(data, "retrieval", {})),
         guardrails=_build_guardrails_config(_get(data, "guardrails", {})),

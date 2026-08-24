@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from functools import partial
 from typing import Any
@@ -10,7 +11,6 @@ from agent.guardrails import Budget, PathGuard, ToolRegistry
 from agent.llm import LLMClient, LLMError
 from agent.planning import build_fallback_plan, generate_llm_plan
 from agent.state import AuditWorkspace, MigrationState, PlanItem
-from migration.py2to3 import transform_python2_to_3
 from retrieval import HybridRetriever
 from retrieval.documents import RetrievalError
 from tools.patcher import apply_plan_item
@@ -30,6 +30,7 @@ class ToolContext:
     state: MigrationState | None = None
     workspace: AuditWorkspace | None = None
     llm: LLMClient | None = None
+    transform: Callable[[str, Any], str] | None = None
 
 
 def _scan_files(ctx: ToolContext, **kwargs: Any) -> list[dict[str, object]]:
@@ -102,7 +103,7 @@ def _apply_patch(ctx: ToolContext, item: Any = None, **kwargs: Any) -> dict[str,
         raise ValueError("apply_patch 需要 item 参数")
     if isinstance(item, dict):
         item = PlanItem(**item)
-    transform = transform_python2_to_3 if item.action == "transform" else None
+    transform = ctx.transform if item.action == "transform" else None
     result = apply_plan_item(item, ctx.guard, transform=transform)
     return {
         "success": result.success,

@@ -23,7 +23,7 @@
 | `agent/loop.py` | 主循环 | 流程相关 |
 | `tools/` | 扫描、补丁、验证、报告 | 具体工具相关 |
 | `retrieval/` | 文档导入、BM25、向量、重排 | 检索相关 |
-| `migration/` | Python 2 到 3 基础迁移规则 | transform 相关 |
+| `migration/` | 迁移档案（py2to3/py3_upgrade）与转换规则 | transform 相关 |
 | `knowledge_base/` | 内置 Python 2 到 3 迁移知识库 | 检索相关 |
 | `examples/` | 示例遗留项目与转换演示 | 演示相关 |
 | `rules/` | 行为规则文档，索引见下方规则索引 | 必读 `00_总则.md`，其余按需 |
