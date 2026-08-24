@@ -34,7 +34,7 @@ legacy_demo/
 ## 完整迁移（大模型 + 内置知识库）
 
 ```powershell
-.venv\Scripts\python.exe main.py --source examples\legacy_demo --output D:\demo_migrated --docs knowledge_base
+.venv\Scripts\python.exe main.py --source examples\legacy_demo --output D:\demo_migrated --docs knowledge_base/py2to3
 ```
 
 预期结果：

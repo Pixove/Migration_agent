@@ -14,6 +14,7 @@ class MigrationProfile:
     description: str
     transform: Callable[[str, Any], str] | None
     scopes: list[str]
+    knowledge_base: str
 
 
 def get_profiles() -> dict[str, MigrationProfile]:
@@ -24,12 +25,14 @@ def get_profiles() -> dict[str, MigrationProfile]:
             description="Python 2 到 Python 3 基础语法迁移（历史档案）",
             transform=transform_python2_to_3,
             scopes=["syntax"],
+            knowledge_base="knowledge_base/py2to3",
         ),
         "py3_upgrade": MigrationProfile(
             name="py3_upgrade",
             description="Python 3.x 升级迁移（废弃 API 与新语法）",
             transform=transform_py3_upgrade,
             scopes=["syntax", "deprecated_api"],
+            knowledge_base="knowledge_base/py3_upgrade",
         ),
     }
 

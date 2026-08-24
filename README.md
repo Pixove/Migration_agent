@@ -51,7 +51,7 @@ $env:OPENAI_API_KEY = "你的密钥"
 完整模式（内置知识库 + 大模型）：
 
 ```powershell
-.venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --docs knowledge_base
+.venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --docs knowledge_base/py2to3
 ```
 
 不使用大模型（回退为原样复制）：
@@ -120,7 +120,9 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 
 ## 知识库
 
-内置知识库位于 `knowledge_base/`，覆盖：
+内置知识库位于 `knowledge_base/`，按档案组织：
+
+`py2to3/` 覆盖：
 
 - Python 2 到 3 语法迁移；
 - 字符串与字节处理；
@@ -130,10 +132,17 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 - 标准库变更；
 - 风险控制、验证回滚与测试策略。
 
+`py3_upgrade/` 覆盖：
+
+- 废弃 API 升级（distutils、imp、datetime.utcnow 等）；
+- Python 3.11+ 性能与新语法。
+
+未传 `--docs` 时，主循环自动加载当前 `migration.profile` 对应的知识库。
+
 可追加自定义文档：
 
 ```powershell
-.venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --docs knowledge_base --docs D:\docs\company-standard
+.venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --docs knowledge_base/py2to3 --docs D:\docs\company-standard
 ```
 
 知识库缓存目录由 `config.yaml` 的 `retrieval.kb_dir` 配置，默认 `kb/`，
@@ -162,7 +171,7 @@ migration-agent/
 ├─ tools/                   # 扫描、补丁、验证、报告
 ├─ retrieval/               # 文档导入、BM25、向量、重排、知识库
 ├─ migration/               # Python 2 到 3 转换规则
-├─ knowledge_base/          # 内置迁移知识库
+├─ knowledge_base/          # 按档案组织的内置迁移知识库
 ├─ examples/                # 示例遗留项目与转换演示
 ├─ rules/                   # 中文规则文档
 ├─ skills/                  # 中文技能文档

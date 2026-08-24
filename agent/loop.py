@@ -110,7 +110,14 @@ class MigrationRunner:
     def _retrieve(self) -> None:
         self.state.transition(Phase.RETRIEVE)
         kb = KnowledgeBase(self.config.retrieval.kb_dir)
-        for path in self.docs:
+        sources = self.docs or [self.profile.knowledge_base]
+        for path in sources:
+            if not Path(path).exists():
+                self.state.add_audit(
+                    "retrieve_examples",
+                    f"知识库路径不存在，跳过: {path}",
+                )
+                continue
             stats = kb.import_source(path)
             self.state.add_audit(
                 "retrieve_examples",

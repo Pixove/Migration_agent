@@ -25,6 +25,17 @@ class ProfileRegistryTests(unittest.TestCase):
         profile = load_profile("py3_upgrade")
         self.assertIsNotNone(profile.transform)
 
+    def test_profiles_have_knowledge_base(self):
+        profiles = get_profiles()
+        self.assertEqual(
+            profiles["py2to3"].knowledge_base,
+            "knowledge_base/py2to3",
+        )
+        self.assertEqual(
+            profiles["py3_upgrade"].knowledge_base,
+            "knowledge_base/py3_upgrade",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

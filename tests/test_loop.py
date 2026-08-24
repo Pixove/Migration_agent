@@ -215,6 +215,7 @@ class RunnerTests(unittest.TestCase):
             self.assertTrue(
                 all(item.status == "applied" for item in state.plan_items)
             )
+            self.assertIsNotNone(runner.retriever)
             counts = runner.dispatcher.call_counts()
             self.assertEqual(counts["scan_files"], 1)
             self.assertEqual(counts["propose_plan"], 1)
