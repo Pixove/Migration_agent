@@ -6,6 +6,7 @@ from pathlib import Path
 
 from agent.chat import ChatSession
 from agent.config import ConfigError, load_config
+from agent.agentic import AgenticRunner
 from agent.llm import create_llm_client
 from agent.loop import MigrationRunner
 
@@ -42,6 +43,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="使用对话引导模式确认迁移目标与路径",
     )
+    parser.add_argument(
+        "--agentic",
+        action="store_true",
+        help="使用 LLM 工具决策循环，让模型自主调用工具",
+    )
     return parser.parse_args(argv)
 
 
@@ -76,14 +82,29 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
     try:
-        runner = MigrationRunner(
-            config,
-            source,
-            output,
-            docs=args.docs,
-            no_llm=args.no_llm,
-            auto_approve=args.auto_approve,
-        )
+        if args.agentic:
+            if args.no_llm:
+                print(
+                    "--agentic 需要启用大模型，不能与 --no-llm 同时使用",
+                    file=sys.stderr,
+                )
+                return 2
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                docs=args.docs,
+                auto_approve=args.auto_approve,
+            )
+        else:
+            runner = MigrationRunner(
+                config,
+                source,
+                output,
+                docs=args.docs,
+                no_llm=args.no_llm,
+                auto_approve=args.auto_approve,
+            )
         state = runner.run()
     except Exception as exc:
         print(f"迁移任务失败: {exc}", file=sys.stderr)

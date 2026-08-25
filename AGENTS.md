@@ -20,6 +20,7 @@
 | `agent/guardrails.py` | 路径沙箱、白名单、预算、审批 | 任何改动前必读 |
 | `agent/state.py` | 任务状态机与审计 | 流程相关 |
 | `agent/planning.py` | 计划生成与校验 | 规划相关 |
+| `agent/agentic.py` | LLM 工具决策循环 | 自主模式相关 |
 | `agent/loop.py` | 主循环 | 流程相关 |
 | `tools/` | 扫描、补丁、验证、报告 | 具体工具相关 |
 | `retrieval/` | 文档导入、BM25、向量、重排 | 检索相关 |

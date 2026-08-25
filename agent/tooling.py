@@ -103,6 +103,13 @@ def _apply_patch(ctx: ToolContext, item: Any = None, **kwargs: Any) -> dict[str,
         raise ValueError("apply_patch 需要 item 参数")
     if isinstance(item, dict):
         item = PlanItem(**item)
+    if item.action == "transform" and not item.evidence:
+        return {
+            "success": False,
+            "output_path": None,
+            "diff": "",
+            "error": "transform 计划缺少证据",
+        }
     transform = ctx.transform if item.action == "transform" else None
     result = apply_plan_item(item, ctx.guard, transform=transform)
     return {
