@@ -128,6 +128,15 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 - `transform` 涉及代码量超过 30% 时必须用户同意；
 - Python 输出文件必须通过 AST 验证，失败自动回滚。
 
+## 运行模式
+
+- 默认模式：固定流水线，扫描 → 检索 → 规划 → 应用 → 验证 → 报告；
+- `--chat`：先对话确认迁移目标、路径与范围，再开始；
+- `--agentic`：LLM 自主决策循环，模型按需调用白名单工具；
+- `--chat --agentic`：对话确认后进入自主执行。
+
+`--agentic` 依赖大模型，不能与 `--no-llm` 同时使用。
+
 ## 知识库
 
 内置知识库位于 `knowledge_base/`，按档案组织：
