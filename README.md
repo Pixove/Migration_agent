@@ -204,6 +204,14 @@ migration-agent/
 .venv\Scripts\python.exe -m unittest discover tests -v
 ```
 
+运行评估系统（检索、迁移、Agentic 编排指标）：
+
+```powershell
+.venv\Scripts\python.exe -m evals.run
+```
+
+详细说明见 `docs/06_评估系统.md`。
+
 ## 文档入口
 
 - `AGENTS.md`：Agent 行为入口与文件索引；

@@ -35,6 +35,7 @@ DOCUMENT_INDEX = [
     ("docs/02_Agent状态机.md", "状态机"),
     ("docs/03_配置说明.md", "配置说明"),
     ("docs/04_调试与排查.md", "调试与排查"),
+    ("docs/06_评估系统.md", "评估系统说明"),
 ]
 
 RED_LINES = [
