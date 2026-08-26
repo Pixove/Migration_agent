@@ -4,6 +4,11 @@ import unittest
 
 from agent.config import load_config
 from evals.agentic_evals import evaluate_agentic_run, run_agentic_evals
+from evals.edit_evals import (
+    evaluate_edit_proposal,
+    load_golden as load_edit_golden,
+    run_edit_evals,
+)
 from evals.migration_evals import run_migration_evals
 from evals.retrieval_evals import run_retrieval_evals
 
@@ -40,6 +45,25 @@ class AgenticEvalTests(unittest.TestCase):
         )
         self.assertEqual(result["violation_count"], 1)
         self.assertFalse(result["completion"])
+
+
+class EditEvalTests(unittest.TestCase):
+    def test_golden_baseline_passes(self):
+        report = run_edit_evals()
+        self.assertEqual(report["passed"], report["total"])
+
+    def test_wrong_edit_fails(self):
+        golden = load_edit_golden()
+        proposal = {
+            "file": golden["cases"][0]["file"],
+            "start_line": 99,
+            "end_line": 99,
+            "new_content": "wrong",
+            "evidence": {"doc_id": "d1"},
+        }
+        result = evaluate_edit_proposal(golden["cases"][0], proposal)
+        self.assertFalse(result["passed"])
+        self.assertTrue(result["evidence_ok"])
 
 
 if __name__ == "__main__":

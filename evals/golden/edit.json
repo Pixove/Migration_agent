@@ -1,0 +1,20 @@
+{
+  "cases": [
+    {
+      "name": "weakref_session",
+      "file": "session.py",
+      "start_line": 1,
+      "end_line": 4,
+      "new_content": "class Session:\n    def close(self):\n        ...\n",
+      "evidence_doc": "05_内存泄漏修复指南"
+    },
+    {
+      "name": "timezone_utcnow",
+      "file": "timeutil.py",
+      "start_line": 3,
+      "end_line": 3,
+      "new_content": "now = datetime.now(timezone.utc)\n",
+      "evidence_doc": "01_废弃API升级"
+    }
+  ]
+}
