@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import difflib
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from functools import partial
 from pathlib import Path
 from typing import Any
 
-from agent.config import AppConfig
+from agent.config import VALID_IMPACT_LEVELS, AppConfig
 from agent.context_loader import PROJECT_ROOT
 from agent.dispatcher import ToolDispatcher, ToolSpec
 from agent.guardrails import Budget, PathGuard, ToolRegistry
@@ -15,7 +16,7 @@ from agent.planning import build_fallback_plan, generate_llm_plan
 from agent.state import AuditWorkspace, MigrationState, PlanItem
 from retrieval import HybridRetriever
 from retrieval.documents import RetrievalError
-from tools.patcher import apply_plan_item
+from tools.patcher import apply_edit_item, apply_line_edit, apply_plan_item
 from tools.reporter import write_report
 from tools.scanner import FileInfo, scan_project
 from tools.verifier import verify_file
@@ -178,6 +179,66 @@ def _read_document(
     return {"path": normalized, "content": content, "truncated": truncated}
 
 
+def _validate_edit_item(item: Any) -> dict:
+    if not isinstance(item, dict):
+        raise ValueError("编辑条目必须是对象")
+    file = str(item.get("file", ""))
+    if not file:
+        raise ValueError("编辑条目缺少 file")
+    start = item.get("start_line")
+    end = item.get("end_line")
+    content = item.get("new_content")
+    if not isinstance(start, int) or not isinstance(end, int):
+        raise ValueError("start_line/end_line 必须是整数")
+    if start < 1 or end < start:
+        raise ValueError(f"无效行范围: {start}-{end}")
+    if not isinstance(content, str) or not content.strip():
+        raise ValueError("编辑条目缺少 new_content")
+    evidence = item.get("evidence")
+    if not isinstance(evidence, dict) or not evidence:
+        raise ValueError("编辑必须携带证据")
+    impact = str(item.get("impact", ""))
+    if impact not in VALID_IMPACT_LEVELS:
+        raise ValueError(f"非法影响面: {impact}")
+    return item
+
+
+def _propose_edit(ctx: ToolContext, item: Any = None, **kwargs: Any) -> dict[str, Any]:
+    """生成语义编辑 diff 预览，不写任何文件。"""
+    item = _validate_edit_item(item)
+    source_path = ctx.guard.resolve_source(item["file"])
+    source_text = source_path.read_text(encoding="utf-8-sig", errors="ignore")
+    new_text = apply_line_edit(
+        source_text,
+        item["start_line"],
+        item["end_line"],
+        item["new_content"],
+    )
+    diff = "".join(
+        difflib.unified_diff(
+            source_text.splitlines(keepends=True),
+            new_text.splitlines(keepends=True),
+            fromfile=f"a/{item['file']}",
+            tofile=f"b/{item['file']}",
+        )
+    )
+    return {"file": item["file"], "diff": diff, "preview": new_text}
+
+
+def _apply_edit(ctx: ToolContext, item: Any = None, **kwargs: Any) -> dict[str, Any]:
+    """应用一条语义编辑到输出目录。"""
+    item = _validate_edit_item(item)
+    result = apply_edit_item(item, ctx.guard)
+    return {
+        "success": result.success,
+        "output_path": (
+            str(result.output_path) if result.output_path else None
+        ),
+        "diff": result.diff,
+        "error": result.error,
+    }
+
+
 def register_tools(dispatcher: ToolDispatcher, ctx: ToolContext) -> None:
     """注册六个白名单工具，将工具名映射到实现函数。"""
     specs = [
@@ -188,6 +249,8 @@ def register_tools(dispatcher: ToolDispatcher, ctx: ToolContext) -> None:
         ToolSpec("run_verifier", "验证输出文件", _run_verifier, max_calls=500),
         ToolSpec("write_report", "生成中文迁移报告", _write_report, max_calls=1),
         ToolSpec("read_document", "按需读取规则/技能/文档", _read_document, max_calls=10),
+        ToolSpec("propose_edit", "生成语义编辑 diff 预览（不写文件）", _propose_edit, max_calls=20),
+        ToolSpec("apply_edit", "应用语义编辑到输出目录", _apply_edit, max_calls=100),
     ]
     for spec in specs:
         dispatcher.register(

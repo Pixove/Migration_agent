@@ -49,6 +49,16 @@ TOOL_DESCRIPTIONS = [
         "description": "按需读取规则/技能/文档",
         "params": {"path": "string", "max_chars": "integer（可选）"},
     },
+    {
+        "name": "propose_edit",
+        "description": "生成语义编辑 diff 预览（不写文件）",
+        "params": {"item": "object"},
+    },
+    {
+        "name": "apply_edit",
+        "description": "应用语义编辑到输出目录",
+        "params": {"item": "object"},
+    },
 ]
 
 
@@ -86,6 +96,7 @@ class AgenticRunner:
             max_total_patches=config.workspace.max_total_patches,
         )
         self.llm = llm or create_llm_client(config.llm)
+        self._approve_all_remaining = False
         self.profile = load_profile(config.migration.profile)
         self.retriever: HybridRetriever | None = None
         self.ctx = ToolContext(
@@ -161,6 +172,35 @@ class AgenticRunner:
                 )
                 return
 
+            if action == "apply_edit":
+                edit_item = (
+                    params.get("item")
+                    if isinstance(params.get("item"), dict)
+                    else {}
+                )
+                impact = edit_item.get("impact")
+                if (
+                    impact in self.config.guardrails.require_approval_impact
+                    and not self.auto_approve
+                    and not self._approve_all_remaining
+                    and not self._default_confirm(edit_item)
+                ):
+                    self.state.add_audit(
+                        "agentic",
+                        f"用户拒绝编辑: {edit_item.get('file')}",
+                    )
+                    history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"用户拒绝了对 {edit_item.get('file')} 的编辑，"
+                                "请调整或跳过。"
+                            ),
+                        }
+                    )
+                    self.workspace.save_state()
+                    continue
+
             if action not in self.dispatcher.available():
                 raise GuardrailError(f"模型调用了未注册工具: {action}")
 
@@ -233,3 +273,15 @@ class AgenticRunner:
             "需要规则或技能细节时，调用 read_document(path) 按需读取，"
             "不要一次性读取全部文档。"
         )
+
+    def _default_confirm(self, item: dict) -> bool:
+        if self._approve_all_remaining:
+            return True
+        answer = input(
+            f"是否应用编辑 {item.get('file')}？"
+            f"（y 同意 / n 跳过 / a 全部同意）[y/N/a]: "
+        ).strip().lower()
+        if answer in {"a", "all", "全部"}:
+            self._approve_all_remaining = True
+            return True
+        return answer in {"y", "yes"}

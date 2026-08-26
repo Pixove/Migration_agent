@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from agent.agentic import AgenticRunner
 from agent.config import load_config
@@ -86,6 +87,91 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertGreaterEqual(
                 runner.dispatcher.call_counts()["scan_files"],
                 1,
+            )
+
+    def test_agentic_semantic_edit_flow(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            item = {
+                "file": "a.py",
+                "start_line": 1,
+                "end_line": 1,
+                "new_content": "x = 2\n",
+                "reason": "semantic",
+                "evidence": {"doc_id": "d1"},
+                "impact": "low",
+            }
+            decisions = [
+                {
+                    "thought": "预览",
+                    "action": "propose_edit",
+                    "params": {"item": item},
+                },
+                {
+                    "thought": "应用",
+                    "action": "apply_edit",
+                    "params": {"item": item},
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertEqual(
+                (output / "a.py").read_text(encoding="utf-8"),
+                "x = 2\n",
+            )
+
+    def test_agentic_edit_requires_approval_for_medium(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            item = {
+                "file": "a.py",
+                "start_line": 1,
+                "end_line": 1,
+                "new_content": "x = 2\n",
+                "reason": "semantic",
+                "evidence": {"doc_id": "d1"},
+                "impact": "medium",
+            }
+            decisions = [
+                {
+                    "thought": "预览",
+                    "action": "propose_edit",
+                    "params": {"item": item},
+                },
+                {
+                    "thought": "应用",
+                    "action": "apply_edit",
+                    "params": {"item": item},
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+            )
+            with patch("builtins.input", return_value="y"):
+                state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertEqual(
+                (output / "a.py").read_text(encoding="utf-8"),
+                "x = 2\n",
             )
 
 
