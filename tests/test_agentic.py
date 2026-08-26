@@ -21,6 +21,25 @@ class FakeAgentLLM:
 
 
 class AgenticRunnerTests(unittest.TestCase):
+    def test_system_prompt_uses_index_and_red_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            config = load_config("config.yaml")
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM([{"action": "finish", "params": {}}]),
+            )
+            prompt = runner._system_prompt()
+            self.assertIn("可用文档索引", prompt)
+            self.assertIn("红线（必须遵守", prompt)
+            self.assertIn("read_document", prompt)
+            self.assertIn("rules/03_迁移决策规范.md", prompt)
+            self.assertNotIn("以下为项目约束上下文，必须遵守", prompt)
+
     def test_agentic_loop_completes(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"

@@ -18,6 +18,33 @@ DEFAULT_SKILLS = [
     "skills/03_迁移规划.md",
 ]
 
+DOCUMENT_INDEX = [
+    ("rules/00_总则.md", "项目定位、规则优先级、基本原则"),
+    ("rules/01_路径与权限边界.md", "输入只读、输出唯一可写、路径沙箱"),
+    ("rules/02_工具使用规范.md", "工具白名单与调用约束"),
+    ("rules/03_迁移决策规范.md", "证据要求、影响面、审批"),
+    ("rules/04_验证与回滚规范.md", "应用后验证、失败回滚"),
+    ("rules/05_审计与报告规范.md", "审计目录、报告要求"),
+    ("skills/01_遗留代码扫描.md", "扫描与识别遗留代码"),
+    ("skills/02_混合检索.md", "文档导入、BM25、向量、重排"),
+    ("skills/03_迁移规划.md", "生成并校验迁移计划"),
+    ("skills/04_补丁应用.md", "在输出目录应用计划"),
+    ("skills/05_验证与报告.md", "验证输出并生成报告"),
+    ("docs/00_项目概览.md", "项目概览"),
+    ("docs/01_总体架构.md", "总体架构"),
+    ("docs/02_Agent状态机.md", "状态机"),
+    ("docs/03_配置说明.md", "配置说明"),
+    ("docs/04_调试与排查.md", "调试与排查"),
+]
+
+RED_LINES = [
+    "输入项目只读，绝不修改；输出目录唯一可写，绝不越界",
+    "只允许调用白名单工具，禁止直接执行 shell 或读写文件",
+    "transform 必须携带关联检索命中的证据",
+    "验证失败的输出不得标记 applied，必须回滚",
+    "禁止删除任何文件、禁止写入 API Key、禁止跳过审计",
+]
+
 
 def load_project_documents(
     project_root: str | Path | None = None,
@@ -51,3 +78,18 @@ def build_planning_context(project_root: str | Path | None = None) -> str:
             sections.append(f"## {name}\n{documents[name]}")
 
     return "\n\n".join(sections)
+
+
+def build_document_index() -> str:
+    """生成紧凑的可用文档索引，供模型按需读取。"""
+    lines = ["可用文档索引（需要时调用 read_document 读取全文）："]
+    for path, description in DOCUMENT_INDEX:
+        lines.append(f"- {path}  {description}")
+    return "\n".join(lines)
+
+
+def build_red_lines() -> str:
+    """生成必须常驻的红线摘要。"""
+    lines = ["红线（必须遵守，不可省略）："]
+    lines.extend(f"- {rule}" for rule in RED_LINES)
+    return "\n".join(lines)

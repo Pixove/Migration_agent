@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 from agent.config import AppConfig
-from agent.context_loader import build_planning_context
+from agent.context_loader import build_document_index, build_red_lines
 from agent.dispatcher import ToolDispatcher
 from agent.guardrails import Budget, GuardrailError, build_guardrails
 from agent.llm import (
@@ -215,7 +215,8 @@ class AgenticRunner:
         self.workspace.save_state()
 
     def _system_prompt(self) -> str:
-        context = build_planning_context()
+        index = build_document_index()
+        red_lines = build_red_lines()
         tools = json.dumps(TOOL_DESCRIPTIONS, ensure_ascii=False)
         return (
             "你是企业级代码库迁移 Agent。当前任务：\n"
@@ -227,6 +228,8 @@ class AgenticRunner:
             "每次只能返回一个 JSON："
             '{"thought": "说明", "action": "工具名或finish", "params": {}}。\n'
             "不得调用白名单之外的任何命令。\n"
-            "项目约束上下文：\n"
-            f"{context}"
+            f"{index}\n\n"
+            f"{red_lines}\n"
+            "需要规则或技能细节时，调用 read_document(path) 按需读取，"
+            "不要一次性读取全部文档。"
         )
