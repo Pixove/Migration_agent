@@ -103,6 +103,14 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 
 迁移完成后在输出目录运行 `main.py` 验证。
 
+语义编辑示例 `examples/semantic_demo/`（内存泄漏、废弃时间 API、无锁计数器）：
+
+```powershell
+.venv\Scripts\python.exe main.py --source examples\semantic_demo --output D:\semantic_migrated --docs knowledge_base/py2to3 --agentic
+```
+
+该示例用于体验 `propose_edit → 自动评审 → 人工审批 → apply_edit` 完整链路。
+
 ## CLI 参数
 
 | 参数 | 说明 |
