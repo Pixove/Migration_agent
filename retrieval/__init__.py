@@ -23,7 +23,11 @@ class HybridRetriever:
 
     def __init__(self, config: RetrievalConfig) -> None:
         self.bm25 = BM25Retriever() if config.bm25_enabled else None
-        self.vector = VectorRetriever(config.embedding_model, config.vector_enabled)
+        self.vector = VectorRetriever(
+            config.embedding_model,
+            config.vector_enabled,
+            chroma_path=config.vector_chroma_path,
+        )
         self.reranker = Reranker(config.rerank_model, config.rerank_enabled)
         self.bm25_top_k = config.bm25_top_k
         self.vector_top_k = config.vector_top_k

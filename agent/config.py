@@ -42,7 +42,8 @@ class RetrievalConfig:
     vector_enabled: bool = False
     vector_top_k: int = 20
     embedding_model: str = "text-embedding-3-small"
-    rerank_enabled: bool = True
+    vector_chroma_path: str = "kb/chroma"
+    rerank_enabled: bool = False
     rerank_top_k: int = 5
     rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
@@ -159,7 +160,8 @@ def _build_retrieval_config(section: dict[str, Any]) -> RetrievalConfig:
         vector_enabled=bool(_get(vector, "enabled", False)),
         vector_top_k=int(_get(vector, "top_k", 20)),
         embedding_model=str(_get(vector, "embedding_model", "text-embedding-3-small")),
-        rerank_enabled=bool(_get(rerank, "enabled", True)),
+        vector_chroma_path=str(_get(vector, "chroma_path", "kb/chroma")),
+        rerank_enabled=bool(_get(rerank, "enabled", False)),
         rerank_top_k=int(_get(rerank, "top_k", 5)),
         rerank_model=str(_get(rerank, "model", "cross-encoder/ms-marco-MiniLM-L-6-v2")),
     )

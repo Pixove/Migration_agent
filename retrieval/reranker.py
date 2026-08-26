@@ -38,14 +38,15 @@ class Reranker:
         try:
             if self._model is None:
                 self._load_model()
-        except RetrievalError:
+            pairs = [(query, doc.text) for doc, _ in candidates]
+            scores = self._model.predict(pairs)
+        except Exception:
+            # 模型加载或预测失败时保持原始顺序，避免阻塞主流程
             return [
                 RerankResult(document=doc, score=score)
                 for doc, score in candidates
             ]
 
-        pairs = [(query, doc.text) for doc, _ in candidates]
-        scores = self._model.predict(pairs)
         ranked = sorted(
             zip(candidates, scores),
             key=lambda pair: pair[1],
