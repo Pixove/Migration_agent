@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
 from retrieval.documents import Document, RetrievalError
@@ -59,6 +60,7 @@ class Reranker:
         ]
 
     def _load_model(self) -> None:
+        os.environ.setdefault("HF_HUB_OFFLINE", "1")
         try:
             from sentence_transformers import CrossEncoder
         except ImportError as exc:

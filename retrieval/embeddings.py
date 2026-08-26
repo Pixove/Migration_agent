@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from retrieval.documents import Document, RetrievalError
 
 
@@ -84,6 +86,7 @@ class VectorRetriever:
             ) from exc
 
         if self._encoder is None:
+            os.environ.setdefault("HF_HUB_OFFLINE", "1")
             try:
                 from sentence_transformers import SentenceTransformer
             except ImportError as exc:
