@@ -9,11 +9,14 @@
 - 双路径 CLI，输入项目只读，输出目录唯一可写；
 - 大模型生成迁移计划，支持 OpenAI 兼容服务与 Ollama；
 - RAG 混合检索：BM25 精确匹配 + 向量语义检索 + Cross-Encoder 重排；
-- 内置 Python 2 到 3 迁移知识库；
+- 按档案组织的内置知识库（py2to3 / py3_upgrade）；
 - 工具白名单、路径沙箱、预算限制、影响面审批；
 - 30% 大规模重构阈值，超限必须用户同意；
 - 计划证据强制关联检索命中，禁止无依据修改；
-- Python 2 到 3 基础语法转换规则；
+- 迁移档案与转换规则（py2to3 正则 / py3_upgrade AST）；
+- 语义编辑模式：LLM 生成 diff，自动评审 + 人工审批；
+- 评估系统：检索、迁移、Agentic 编排、语义编辑四类指标；
+- Agentic 按需读取 rules/skills，节省上下文；
 - 验证失败自动回滚，完整审计与中文报告。
 
 ## 快速开始
@@ -76,7 +79,7 @@ examples/legacy_demo/
 迁移示例项目：
 
 ```powershell
-.venv\Scripts\python.exe main.py --source examples\legacy_demo --output D:\demo_migrated --docs knowledge_base
+.venv\Scripts\python.exe main.py --source examples\legacy_demo --output D:\demo_migrated --docs knowledge_base/py2to3
 ```
 
 迁移完成后在输出目录运行：
@@ -126,6 +129,7 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 - `low` 影响自动应用，`medium/high` 需要人工审批；
 - 每条修改计划必须引用知识库检索命中；
 - `transform` 涉及代码量超过 30% 时必须用户同意；
+- 语义编辑必须 `propose_edit → 自动评审 → 人工审批 → apply_edit`；
 - Python 输出文件必须通过 AST 验证，失败自动回滚。
 
 ## 运行模式
@@ -136,6 +140,19 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 - `--chat --agentic`：对话确认后进入自主执行。
 
 `--agentic` 依赖大模型，不能与 `--no-llm` 同时使用。
+
+## 语义编辑与评审
+
+固定规则只能处理语法与废弃 API；内存泄漏、并发、框架升级这类语义问题
+由 LLM 生成结构化编辑，harness 负责把关。
+
+```text
+propose_edit（生成 diff 预览，不写文件）
+→ 自动评审（检查范围/证据/无关改动，失败即拒绝）
+→ 人工审批（medium/high）
+→ apply_edit（写入输出目录）
+→ 验证回滚
+```
 
 ## 知识库
 
@@ -186,12 +203,13 @@ migration-agent/
 ├─ main.py                  # CLI 入口
 ├─ config.example.yaml      # 配置模板（入库）
 ├─ config.yaml              # 本地配置（不入库）
-├─ agent/                   # 状态机、护栏、LLM 适配、调度
+├─ agent/                   # 状态机、护栏、LLM 适配、调度、评审
 ├─ tools/                   # 扫描、补丁、验证、报告
 ├─ retrieval/               # 文档导入、BM25、向量、重排、知识库
-├─ migration/               # Python 2 到 3 转换规则
+├─ migration/               # 迁移档案（py2to3/py3_upgrade）与转换规则
 ├─ knowledge_base/          # 按档案组织的内置迁移知识库
 ├─ examples/                # 示例遗留项目与转换演示
+├─ evals/                   # 检索、迁移、Agentic、编辑评估
 ├─ rules/                   # 中文规则文档
 ├─ skills/                  # 中文技能文档
 ├─ docs/                    # 中文架构与调试文档
@@ -204,7 +222,7 @@ migration-agent/
 .venv\Scripts\python.exe -m unittest discover tests -v
 ```
 
-运行评估系统（检索、迁移、Agentic 编排指标）：
+运行评估系统（检索、迁移、Agentic 编排、语义编辑四类指标）：
 
 ```powershell
 .venv\Scripts\python.exe -m evals.run
@@ -223,5 +241,7 @@ migration-agent/
 
 - `--source` 目前只接受项目目录，不支持单文件；
 - `transform` 规则为基础集，复杂语法仍需扩展；
-- 向量检索依赖 `sentence-transformers`，PDF 解析依赖 `pypdf`，未安装时对应功能关闭；
+- 语义编辑依赖大模型生成与评审，无法离线生成；
+- 向量检索与重排需要本地缓存模型，未缓存时对应功能关闭；
+- PDF 解析依赖 `pypdf`，未安装时对应功能关闭；
 - LLM 生成修改型计划需要知识库文档作为证据来源。
