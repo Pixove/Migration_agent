@@ -29,11 +29,11 @@ class ProfileRegistryTests(unittest.TestCase):
         profiles = get_profiles()
         self.assertEqual(
             profiles["py2to3"].knowledge_base,
-            "knowledge_base/py2to3",
+            ["knowledge_base/py2to3", "knowledge_base/topics"],
         )
         self.assertEqual(
             profiles["py3_upgrade"].knowledge_base,
-            "knowledge_base/py3_upgrade",
+            ["knowledge_base/py3_upgrade", "knowledge_base/topics"],
         )
 
 

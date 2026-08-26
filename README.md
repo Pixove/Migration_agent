@@ -9,7 +9,7 @@
 - 双路径 CLI，输入项目只读，输出目录唯一可写；
 - 大模型生成迁移计划，支持 OpenAI 兼容服务与 Ollama；
 - RAG 混合检索：BM25 精确匹配 + 向量语义检索 + Cross-Encoder 重排；
-- 按档案组织的内置知识库（py2to3 / py3_upgrade）；
+- 按档案与主题组织的内置知识库；
 - 工具白名单、路径沙箱、预算限制、影响面审批；
 - 30% 大规模重构阈值，超限必须用户同意；
 - 计划证据强制关联检索命中，禁止无依据修改；
@@ -106,7 +106,7 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 语义编辑示例 `examples/semantic_demo/`（内存泄漏、废弃时间 API、无锁计数器）：
 
 ```powershell
-.venv\Scripts\python.exe main.py --source examples\semantic_demo --output D:\semantic_migrated --docs knowledge_base/py2to3 --agentic
+.venv\Scripts\python.exe main.py --source examples\semantic_demo --output D:\semantic_migrated --agentic
 ```
 
 该示例用于体验 `propose_edit → 自动评审 → 人工审批 → apply_edit` 完整链路。
@@ -164,24 +164,29 @@ propose_edit（生成 diff 预览，不写文件）
 
 ## 知识库
 
-内置知识库位于 `knowledge_base/`，按档案组织：
+内置知识库位于 `knowledge_base/`，按“档案 + 主题”组织：
 
 `py2to3/` 覆盖：
 
 - Python 2 到 3 语法迁移；
 - 字符串与字节处理；
 - 异常处理迁移；
-- 并发安全最佳实践；
-- 内存泄漏修复；
 - 标准库变更；
-- 风险控制、验证回滚与测试策略。
 
 `py3_upgrade/` 覆盖：
 
 - 废弃 API 升级（distutils、imp、datetime.utcnow 等）；
 - Python 3.11+ 性能与新语法。
 
-未传 `--docs` 时，主循环自动加载当前 `migration.profile` 对应的知识库。
+`topics/` 覆盖通用最佳实践（所有档案自动加载）：
+
+- 并发安全最佳实践；
+- 内存泄漏修复指南；
+- 迁移风险评估与控制；
+- 验证与回滚最佳实践；
+- 测试迁移正确性。
+
+未传 `--docs` 时，主循环自动加载当前档案目录 + `topics/`。
 
 可追加自定义文档：
 
@@ -215,7 +220,7 @@ migration-agent/
 ├─ tools/                   # 扫描、补丁、验证、报告
 ├─ retrieval/               # 文档导入、BM25、向量、重排、知识库
 ├─ migration/               # 迁移档案（py2to3/py3_upgrade）与转换规则
-├─ knowledge_base/          # 按档案组织的内置迁移知识库
+├─ knowledge_base/          # 按档案与主题组织的内置迁移知识库
 ├─ examples/                # 示例遗留项目与转换演示
 ├─ evals/                   # 检索、迁移、Agentic、编辑评估
 ├─ rules/                   # 中文规则文档

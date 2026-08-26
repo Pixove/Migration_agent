@@ -11,10 +11,11 @@
 建议使用 `--agentic`，让模型自主决定调用 `propose_edit`、评审和应用编辑：
 
 ```powershell
-.venv\Scripts\python.exe main.py --source examples\semantic_demo --output D:\semantic_migrated --docs knowledge_base/py2to3 --agentic
+.venv\Scripts\python.exe main.py --source examples\semantic_demo --output D:\semantic_migrated --agentic
 ```
 
-说明：内存泄漏与并发安全文档位于 `knowledge_base/py2to3/`，可作为编辑证据。
+说明：不传 `--docs` 时，主循环会自动加载当前档案知识库 + `knowledge_base/topics/`，
+其中包含内存泄漏与并发安全文档，可作为编辑证据。
 
 ## 预期链路
 

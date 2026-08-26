@@ -56,7 +56,8 @@ class KnowledgeBaseTests(unittest.TestCase):
     def test_builtin_knowledge_base_imports_and_searches(self):
         with tempfile.TemporaryDirectory() as tmp:
             kb = KnowledgeBase(Path(tmp) / "kb")
-            stats = kb.import_source("knowledge_base/py2to3")
+            kb.import_source("knowledge_base/py2to3")
+            stats = kb.import_source("knowledge_base/topics")
             self.assertGreater(stats["added"], 5)
 
             config = load_config("config.yaml").retrieval

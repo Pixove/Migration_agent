@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 from agent.config import AppConfig, load_config
+from migration.registry import load_profile
 from retrieval.knowledge_base import KnowledgeBase
 
 GOLDEN_FILE = Path(__file__).parent / "golden" / "retrieval.json"
@@ -26,7 +27,8 @@ def run_retrieval_evals(
     profile = golden.get("profile", "py2to3")
 
     kb = KnowledgeBase(Path(tempfile.mkdtemp()) / "kb")
-    kb.import_source(f"knowledge_base/{profile}")
+    for path in load_profile(profile).knowledge_base:
+        kb.import_source(path)
     retriever = kb.build_retriever(config.retrieval)
 
     cases = []
