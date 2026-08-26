@@ -1,0 +1,17 @@
+{
+  "profile": "py2to3",
+  "queries": [
+    {
+      "query": "print 语句迁移",
+      "expected": ["01_Python2到3语法迁移"]
+    },
+    {
+      "query": "并发安全 锁",
+      "expected": ["04_并发安全最佳实践"]
+    },
+    {
+      "query": "内存泄漏 引用环",
+      "expected": ["05_内存泄漏修复指南"]
+    }
+  ]
+}
