@@ -64,6 +64,7 @@ class GuardrailsConfig:
             "apply_patch",
             "run_verifier",
             "write_report",
+            "read_document",
         ]
     )
     auto_apply_max_impact: str = "low"

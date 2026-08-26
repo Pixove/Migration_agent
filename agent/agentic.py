@@ -44,6 +44,11 @@ TOOL_DESCRIPTIONS = [
         "params": {"path": "string"},
     },
     {"name": "write_report", "description": "生成迁移报告", "params": {}},
+    {
+        "name": "read_document",
+        "description": "按需读取规则/技能/文档",
+        "params": {"path": "string", "max_chars": "integer（可选）"},
+    },
 ]
 
 

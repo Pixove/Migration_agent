@@ -3,9 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from functools import partial
+from pathlib import Path
 from typing import Any
 
 from agent.config import AppConfig
+from agent.context_loader import PROJECT_ROOT
 from agent.dispatcher import ToolDispatcher, ToolSpec
 from agent.guardrails import Budget, PathGuard, ToolRegistry
 from agent.llm import LLMClient, LLMError
@@ -17,6 +19,8 @@ from tools.patcher import apply_plan_item
 from tools.reporter import write_report
 from tools.scanner import FileInfo, scan_project
 from tools.verifier import verify_file
+
+ALLOWED_DOC_PREFIXES = ("rules/", "skills/", "docs/", "knowledge_base/")
 
 
 @dataclass
@@ -140,6 +144,40 @@ def _write_report(ctx: ToolContext, **kwargs: Any) -> dict[str, Any]:
     return {"path": str(path)}
 
 
+def _read_document(
+    ctx: ToolContext,
+    path: str = "",
+    max_chars: int = 8000,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """按需读取规则/技能/文档，限制在允许目录内。"""
+    if not path:
+        raise ValueError("read_document 需要 path 参数")
+    raw = Path(path)
+    if raw.is_absolute():
+        raise ValueError("read_document 只接受相对路径")
+    normalized = raw.as_posix()
+    if not normalized.startswith(ALLOWED_DOC_PREFIXES):
+        raise ValueError(f"只能读取规则/技能/文档目录: {path}")
+    if ".." in raw.parts:
+        raise ValueError(f"路径越界: {path}")
+
+    target = (PROJECT_ROOT / raw).resolve()
+    root = PROJECT_ROOT.resolve()
+    try:
+        target.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"路径越界: {path}") from exc
+    if not target.is_file():
+        raise ValueError(f"文档不存在: {path}")
+
+    content = target.read_text(encoding="utf-8")
+    truncated = len(content) > max_chars
+    if truncated:
+        content = content[:max_chars]
+    return {"path": normalized, "content": content, "truncated": truncated}
+
+
 def register_tools(dispatcher: ToolDispatcher, ctx: ToolContext) -> None:
     """注册六个白名单工具，将工具名映射到实现函数。"""
     specs = [
@@ -149,6 +187,7 @@ def register_tools(dispatcher: ToolDispatcher, ctx: ToolContext) -> None:
         ToolSpec("apply_patch", "在输出目录应用计划条目", _apply_patch, max_calls=500),
         ToolSpec("run_verifier", "验证输出文件", _run_verifier, max_calls=500),
         ToolSpec("write_report", "生成中文迁移报告", _write_report, max_calls=1),
+        ToolSpec("read_document", "按需读取规则/技能/文档", _read_document, max_calls=10),
     ]
     for spec in specs:
         dispatcher.register(

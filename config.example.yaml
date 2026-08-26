@@ -75,6 +75,7 @@ guardrails:
     - apply_patch
     - run_verifier
     - write_report
+    - read_document
 
   # 影响面分级: low | medium | high
   # 低于等于该等级的计划条目可自动应用
