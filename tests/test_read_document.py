@@ -50,6 +50,15 @@ class ReadDocumentToolTests(unittest.TestCase):
             )
             self.assertFalse(result.success)
 
+    def test_docs_not_readable_by_runtime_agent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dispatcher = self._build_dispatcher(tmp)
+            result = dispatcher.call(
+                "read_document",
+                path="docs/06_评估系统.md",
+            )
+            self.assertFalse(result.success)
+
     def test_truncation(self):
         with tempfile.TemporaryDirectory() as tmp:
             dispatcher = self._build_dispatcher(tmp)

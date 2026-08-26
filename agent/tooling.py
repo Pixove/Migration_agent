@@ -20,7 +20,7 @@ from tools.reporter import write_report
 from tools.scanner import FileInfo, scan_project
 from tools.verifier import verify_file
 
-ALLOWED_DOC_PREFIXES = ("rules/", "skills/", "docs/", "knowledge_base/")
+ALLOWED_DOC_PREFIXES = ("rules/", "skills/")
 
 
 @dataclass
