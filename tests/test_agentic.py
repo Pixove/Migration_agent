@@ -78,6 +78,10 @@ class AgenticRunnerTests(unittest.TestCase):
                 source,
                 output,
                 llm=FakeAgentLLM(decisions),
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
             )
             state = runner.run()
 
@@ -123,6 +127,10 @@ class AgenticRunnerTests(unittest.TestCase):
                 source,
                 output,
                 llm=FakeAgentLLM(decisions),
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
             )
             state = runner.run()
             self.assertEqual(state.phase.value, "done")
@@ -165,6 +173,10 @@ class AgenticRunnerTests(unittest.TestCase):
                 source,
                 output,
                 llm=FakeAgentLLM(decisions),
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
             )
             with patch("builtins.input", return_value="y"):
                 state = runner.run()
@@ -172,6 +184,93 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertEqual(
                 (output / "a.py").read_text(encoding="utf-8"),
                 "x = 2\n",
+            )
+
+    def test_agentic_edit_rejected_by_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            item = {
+                "file": "a.py",
+                "start_line": 1,
+                "end_line": 1,
+                "new_content": "x = 2\n",
+                "reason": "semantic",
+                "evidence": {"doc_id": "d1"},
+                "impact": "low",
+            }
+            decisions = [
+                {
+                    "thought": "预览",
+                    "action": "propose_edit",
+                    "params": {"item": item},
+                },
+                {
+                    "thought": "应用",
+                    "action": "apply_edit",
+                    "params": {"item": item},
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+                reviewer=lambda item, diff: {
+                    "approved": False,
+                    "issues": ["证据不相关"],
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertFalse((output / "a.py").exists())
+            self.assertTrue(
+                any("评审未通过" in entry.message for entry in state.audit_entries)
+            )
+
+    def test_agentic_edit_requires_preview_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            item = {
+                "file": "a.py",
+                "start_line": 1,
+                "end_line": 1,
+                "new_content": "x = 2\n",
+                "reason": "semantic",
+                "evidence": {"doc_id": "d1"},
+                "impact": "low",
+            }
+            decisions = [
+                {
+                    "thought": "应用",
+                    "action": "apply_edit",
+                    "params": {"item": item},
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertFalse((output / "a.py").exists())
+            self.assertTrue(
+                any("缺少预览" in entry.message for entry in state.audit_entries)
             )
 
 

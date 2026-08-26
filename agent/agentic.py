@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from agent.config import AppConfig
 from agent.context_loader import build_document_index, build_red_lines
@@ -15,6 +17,7 @@ from agent.llm import (
 )
 from agent.state import AuditWorkspace, MigrationState, Phase
 from agent.tooling import ToolContext, register_tools
+from agent.review import review_edit
 from migration.registry import load_profile
 from retrieval import HybridRetriever
 from retrieval.knowledge_base import KnowledgeBase
@@ -74,6 +77,7 @@ class AgenticRunner:
         docs: list[str | Path] | None = None,
         auto_approve: bool = False,
         llm: LLMClient | None = None,
+        reviewer: Callable[[dict, str], dict] | None = None,
     ) -> None:
         self.config = config
         self.docs = docs or []
@@ -97,6 +101,10 @@ class AgenticRunner:
         )
         self.llm = llm or create_llm_client(config.llm)
         self._approve_all_remaining = False
+        self._edit_previews: dict[str, dict] = {}
+        self._reviewer = reviewer or (
+            lambda item, diff: review_edit(self.llm, item, diff)
+        )
         self.profile = load_profile(config.migration.profile)
         self.retriever: HybridRetriever | None = None
         self.ctx = ToolContext(
@@ -178,6 +186,43 @@ class AgenticRunner:
                     if isinstance(params.get("item"), dict)
                     else {}
                 )
+                preview = self._edit_previews.get(edit_item.get("file"))
+                if preview is None:
+                    self.state.add_audit(
+                        "agentic",
+                        f"apply_edit 缺少预览: {edit_item.get('file')}",
+                    )
+                    history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "必须先调用 propose_edit 生成预览，"
+                                "再调用 apply_edit。"
+                            ),
+                        }
+                    )
+                    self.workspace.save_state()
+                    continue
+
+                review = self._reviewer(edit_item, preview.get("diff", ""))
+                if not review.get("approved"):
+                    self.state.add_audit(
+                        "agentic",
+                        f"评审未通过: {edit_item.get('file')}",
+                        {"issues": review.get("issues", [])},
+                    )
+                    history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"评审未通过: {review.get('issues')}，"
+                                "请调整编辑或跳过。"
+                            ),
+                        }
+                    )
+                    self.workspace.save_state()
+                    continue
+
                 impact = edit_item.get("impact")
                 if (
                     impact in self.config.guardrails.require_approval_impact
@@ -215,6 +260,10 @@ class AgenticRunner:
                 },
             )
             if result.success:
+                if action == "propose_edit":
+                    preview = result.result
+                    if isinstance(preview, dict) and preview.get("file"):
+                        self._edit_previews[preview["file"]] = preview
                 history.append({"role": "assistant", "content": raw})
                 history.append(
                     {
