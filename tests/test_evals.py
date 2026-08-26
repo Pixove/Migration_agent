@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from agent.config import load_config
+from evals.agentic_evals import evaluate_agentic_run, run_agentic_evals
 from evals.migration_evals import run_migration_evals
 from evals.retrieval_evals import run_retrieval_evals
 
@@ -20,6 +21,25 @@ class RetrievalEvalTests(unittest.TestCase):
         config.retrieval.rerank_enabled = False
         report = run_retrieval_evals(config=config)
         self.assertEqual(report["avg_recall"], 1.0)
+
+
+class AgenticEvalTests(unittest.TestCase):
+    def test_perfect_trace_scores(self):
+        report = run_agentic_evals()
+        self.assertEqual(report["result"]["tool_accuracy"], 1.0)
+        self.assertTrue(report["result"]["sequence_match"])
+        self.assertTrue(report["result"]["completion"])
+
+    def test_violation_detected(self):
+        config = load_config("config.yaml")
+        result = evaluate_agentic_run(
+            ["rm_all"],
+            ["scan_files"],
+            completed=False,
+            allowed_tools=set(config.guardrails.allowed_tools),
+        )
+        self.assertEqual(result["violation_count"], 1)
+        self.assertFalse(result["completion"])
 
 
 if __name__ == "__main__":

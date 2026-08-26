@@ -1,0 +1,12 @@
+{
+  "scenario": "py38_demo_migration",
+  "goal": "把 Python 3.8 项目升级到 3.13",
+  "expected_sequence": [
+    "scan_files",
+    "retrieve_examples",
+    "propose_plan",
+    "apply_patch",
+    "run_verifier",
+    "finish"
+  ]
+}
