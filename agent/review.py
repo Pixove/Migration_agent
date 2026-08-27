@@ -36,15 +36,26 @@ def review_edit(llm: LLMClient, item: dict, diff: str) -> dict:
             ),
         },
     ]
-    try:
-        raw = llm.complete(messages, max_tokens=1024, json_mode=True)
-        data = parse_json_object(raw)
-    except LLMError:
-        return {"approved": False, "issues": ["评审响应解析失败"]}
-    if not isinstance(data, dict):
-        return {"approved": False, "issues": ["评审响应格式非法"]}
-    issues = data.get("issues")
-    return {
-        "approved": bool(data.get("approved")),
-        "issues": issues if isinstance(issues, list) else [],
-    }
+    for attempt in range(3):
+        try:
+            raw = llm.complete(messages, max_tokens=1024, json_mode=True)
+            data = parse_json_object(raw)
+        except LLMError:
+            data = None
+        if isinstance(data, dict):
+            issues = data.get("issues")
+            return {
+                "approved": bool(data.get("approved")),
+                "issues": issues if isinstance(issues, list) else [],
+            }
+        if attempt < 2:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "你上一次的评审响应不是合法 JSON。请只返回 "
+                        '{"approved": true/false, "issues": []}。'
+                    ),
+                }
+            )
+    return {"approved": False, "issues": ["评审响应解析失败"]}
