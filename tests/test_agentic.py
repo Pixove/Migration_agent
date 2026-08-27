@@ -99,6 +99,19 @@ class AgenticRunnerTests(unittest.TestCase):
             decisions = [
                 {"thought": "扫描", "action": "scan_files", "params": {}},
                 {
+                    "thought": "应用",
+                    "action": "apply_patch",
+                    "params": {
+                        "item": {
+                            "id": "p1",
+                            "file": "a.py",
+                            "issue": "x",
+                            "action": "copy",
+                            "impact": "low",
+                        }
+                    },
+                },
+                {
                     "thought": "读源码",
                     "action": "read_source",
                     "params": {"path": "a.py"},
@@ -137,6 +150,39 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertEqual(state.phase.value, "done")
             self.assertTrue((output / "a.py").is_file())
             self.assertTrue(
+                any("连续只读" in entry.message for entry in state.audit_entries)
+            )
+
+    def test_agentic_read_phase_not_cut_off(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}},
+                {
+                    "thought": "读源码",
+                    "action": "read_source",
+                    "params": {"path": "a.py"},
+                },
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue((output / "a.py").is_file())
+            self.assertTrue(
+                any("强制收尾" in entry.message for entry in state.audit_entries)
+            )
+            self.assertFalse(
                 any("连续只读" in entry.message for entry in state.audit_entries)
             )
 

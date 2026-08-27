@@ -27,6 +27,15 @@ from tools.reporter import write_report as generate_report
 MAX_AGENT_ITERATIONS = 20
 MAX_HISTORY_MESSAGES = 40
 
+READ_ONLY_ACTIONS = ("read_document", "read_source", "retrieve_examples")
+EXECUTE_ACTIONS = (
+    "propose_plan",
+    "propose_edit",
+    "apply_patch",
+    "apply_edit",
+    "run_verifier",
+)
+
 TOOL_DESCRIPTIONS = [
     {"name": "scan_files", "description": "扫描输入项目，返回文件清单", "params": {}},
     {
@@ -116,6 +125,7 @@ class AgenticRunner:
             max_total_patches=config.workspace.max_total_patches,
         )
         self.llm = llm or create_llm_client(config.llm)
+        self._phase = "read"
         self._approve_all_remaining = False
         self._edit_previews: dict[str, dict] = {}
         self._read_docs: set[str] = set()
@@ -243,15 +253,18 @@ class AgenticRunner:
                 self.workspace.save_state()
                 return
 
-            read_only = action in (
-                "read_document",
-                "read_source",
-                "retrieve_examples",
-            )
+            read_only = action in READ_ONLY_ACTIONS
+            if self._phase == "read" and action in EXECUTE_ACTIONS:
+                self._phase = "execute"
+                self.state.add_audit("agentic", "进入执行阶段")
             consecutive_read_only = (
                 consecutive_read_only + 1 if read_only else 0
             )
-            if consecutive_read_only >= 5:
+            if (
+                self._phase == "execute"
+                and consecutive_read_only >= 5
+                and self._all_scanned_files_written()
+            ):
                 self.state.add_audit(
                     "agentic",
                     "连续只读操作过多，Agent 自动结束",
@@ -542,7 +555,9 @@ class AgenticRunner:
             "轮次接近上限时会收到提醒，请尽快收尾；\n"
             "语义问题（内存泄漏/并发/废弃 API）必须使用 propose_edit 与 "
             "apply_edit，apply_patch 只用于固定语法规则；\n"
-            "write_report 生成报告后任务即完成，应结束循环。"
+            "write_report 生成报告后任务即完成，应结束循环；\n"
+            "先读取必要文档与源码，读取阶段不会被打断；"
+            "开始执行（propose_plan/编辑/应用/验证）后进入执行阶段。"
         )
 
     def _trim_history(self, messages: list[dict]) -> list[dict]:
@@ -564,6 +579,14 @@ class AgenticRunner:
             f"已应用补丁 {counts.get('apply_patch', 0)} 次；"
             f"已读取文档 {len(self._read_docs)} 份；"
             f"报告已生成 {counts.get('write_report', 0) > 0}"
+        )
+
+    def _all_scanned_files_written(self) -> bool:
+        if not self.ctx.files:
+            return False
+        return all(
+            self.guard.resolve_output(file.relative_path).is_file()
+            for file in self.ctx.files
         )
 
     def _default_confirm(self, item: dict) -> bool:
