@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,21 @@ from agent.dispatcher import ToolDispatcher, ToolSpec
 from agent.guardrails import Budget, GuardrailError, PathGuard, ToolRegistry
 from agent.tooling import ToolContext, register_tools
 from migration.py2to3 import transform_python2_to_3
+
+
+class FakePlanLLM:
+    def complete(self, messages, **kwargs):
+        payload = json.loads(messages[1]["content"])
+        items = [
+            {
+                "file": name,
+                "issue": "x",
+                "action": "copy",
+                "impact": "low",
+            }
+            for name in payload["files"]
+        ]
+        return json.dumps({"items": items}, ensure_ascii=False)
 
 
 class DispatcherMechanicsTests(unittest.TestCase):
@@ -101,6 +117,25 @@ class ToolingTests(unittest.TestCase):
             result = dispatcher.call("run_verifier", path=".")
             self.assertFalse(result.success)
             self.assertIn("不是输出文件", result.error)
+
+    def test_propose_plan_uses_llm_when_provided(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            config = load_config("config.yaml")
+            ctx = ToolContext(
+                config=config,
+                guard=PathGuard(source, output),
+                llm=FakePlanLLM(),
+            )
+            dispatcher = ToolDispatcher(
+                ToolRegistry(config.guardrails.allowed_tools)
+            )
+            register_tools(dispatcher, ctx)
+            result = dispatcher.call("propose_plan", files=["a.py"])
+            self.assertTrue(result.success)
+            self.assertEqual(result.result["source"], "llm")
 
 
 if __name__ == "__main__":

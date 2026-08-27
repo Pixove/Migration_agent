@@ -14,11 +14,26 @@ from agent.llm import LLMError
 class FakeAgentLLM:
     def __init__(self, decisions):
         self.decisions = decisions
-        self.calls = 0
+        self._decision_index = 0
 
     def complete(self, messages, **kwargs):
-        decision = self.decisions[min(self.calls, len(self.decisions) - 1)]
-        self.calls += 1
+        system = messages[0]["content"] if messages else ""
+        if "迁移规划器" in system:
+            payload = json.loads(messages[1]["content"])
+            items = [
+                {
+                    "file": name,
+                    "issue": "x",
+                    "action": "copy",
+                    "impact": "low",
+                }
+                for name in payload.get("files", [])
+            ]
+            return json.dumps({"items": items}, ensure_ascii=False)
+        decision = self.decisions[
+            min(self._decision_index, len(self.decisions) - 1)
+        ]
+        self._decision_index += 1
         return json.dumps(decision, ensure_ascii=False)
 
 

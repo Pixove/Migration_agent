@@ -113,7 +113,7 @@ class AgenticRunner:
             guard=self.guard,
             state=self.state,
             workspace=self.workspace,
-            llm=None,
+            llm=self.llm,
             transform=self.profile.transform,
         )
         self.dispatcher = ToolDispatcher(self.tools, self.budget)
