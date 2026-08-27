@@ -15,12 +15,13 @@ from agent.llm import (
     create_llm_client,
     parse_json_object,
 )
-from agent.state import AuditWorkspace, MigrationState, Phase
+from agent.state import AuditWorkspace, MigrationState, Phase, PlanItem
 from agent.tooling import ToolContext, register_tools
 from agent.review import review_edit
 from migration.registry import load_profile
 from retrieval import HybridRetriever
 from retrieval.knowledge_base import KnowledgeBase
+from tools.patcher import apply_plan_item
 
 MAX_AGENT_ITERATIONS = 20
 MAX_HISTORY_MESSAGES = 40
@@ -393,6 +394,7 @@ class AgenticRunner:
         self.state.transition(Phase.PLAN)
         self.state.transition(Phase.APPLY)
         self.state.transition(Phase.VERIFY)
+        self._finalize_missing_files()
         self.state.transition(Phase.REPORT)
         if self.dispatcher.call_counts().get("write_report", 0) == 0:
             result = self.dispatcher.call("write_report")
@@ -402,6 +404,33 @@ class AgenticRunner:
         self.workspace.save_state()
         self.state.transition(Phase.DONE)
         self.workspace.save_state()
+
+    def _finalize_missing_files(self) -> None:
+        """把扫描清单中未写入输出目录的文件按原样补齐，保证项目完整。"""
+        for file in self.ctx.files:
+            relative = file.relative_path
+            output_path = self.guard.resolve_output(relative)
+            if output_path.is_file():
+                continue
+            item = PlanItem(
+                id=f"final-{relative}",
+                file=relative,
+                issue="未处理文件补齐为原样复制",
+                action="copy",
+                impact="low",
+            )
+            result = apply_plan_item(item, self.guard)
+            if result.success:
+                self.state.add_audit(
+                    "agentic",
+                    f"补齐未处理文件: {relative}",
+                )
+            else:
+                self.state.add_audit(
+                    "agentic",
+                    f"补齐失败: {relative}",
+                    {"error": result.error},
+                )
 
     def _system_prompt(self) -> str:
         index = build_document_index()
