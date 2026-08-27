@@ -72,6 +72,7 @@ class MigrationState:
         self.phase = Phase.INIT
         self.plan_items: list[PlanItem] = []
         self.audit_entries: list[AuditEntry] = []
+        self.unresolved_signals: list[dict] = []
 
     def transition(self, target: Phase) -> None:
         if target == Phase.FAILED:
@@ -118,6 +119,7 @@ class MigrationState:
             "phase": self.phase.value,
             "plan_items": [asdict(item) for item in self.plan_items],
             "audit_entries": [asdict(entry) for entry in self.audit_entries],
+            "unresolved_signals": self.unresolved_signals,
         }
 
     def save(self, path: str | Path) -> None:
@@ -145,6 +147,7 @@ class MigrationState:
         state.audit_entries = [
             AuditEntry(**entry) for entry in data.get("audit_entries", [])
         ]
+        state.unresolved_signals = data.get("unresolved_signals", [])
         return state
 
     def _touch(self) -> None:

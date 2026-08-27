@@ -186,6 +186,38 @@ class AgenticRunnerTests(unittest.TestCase):
                 any("连续只读" in entry.message for entry in state.audit_entries)
             )
 
+    def test_agentic_reports_unresolved_signals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}},
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue(state.unresolved_signals)
+            report = (state.audit_dir() / "report.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("未修复信号", report)
+
     def test_agentic_max_iterations_force_finishes(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"

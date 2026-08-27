@@ -19,6 +19,7 @@ from agent.state import AuditWorkspace, MigrationState, Phase, PlanItem
 from agent.tooling import ToolContext, register_tools
 from agent.review import review_edit
 from migration.registry import load_profile
+from migration.scan_signals import scan_python_signals
 from retrieval import HybridRetriever
 from retrieval.knowledge_base import KnowledgeBase
 from tools.patcher import apply_plan_item
@@ -410,12 +411,25 @@ class AgenticRunner:
                     }
                 )
             else:
+                repair_hint = ""
+                if action in ("propose_edit", "apply_edit") and (
+                    "new_content" in (result.error or "")
+                    or "replacement" in (result.error or "")
+                ):
+                    repair_hint = (
+                        "编辑条目必须包含 new_content（或 replacement）字段，"
+                        "即改后的完整代码；建议同时包含 start_line/end_line。"
+                        '示例：{"file": "a.py", "start_line": 1, '
+                        '"end_line": 2, "new_content": "...", '
+                        '"evidence": {"doc_id": "d1"}, "impact": "low"}。'
+                    )
                 history.append(
                     {
                         "role": "user",
                         "content": (
-                            f"工具 {action} 调用失败: {result.error}，"
-                            "请换一种方式继续。"
+                            f"工具 {action} 调用失败: {result.error}。"
+                            f"{repair_hint}"
+                            "请修正后重试。"
                         ),
                     }
                 )
@@ -433,6 +447,7 @@ class AgenticRunner:
         self.state.transition(Phase.APPLY)
         self.state.transition(Phase.VERIFY)
         self._finalize_missing_files()
+        self._collect_unresolved_signals()
         self.state.transition(Phase.REPORT)
         report = generate_report(self.state, self.workspace)
         self.state.add_audit("agentic", f"报告已生成: {report.name}")
@@ -477,6 +492,28 @@ class AgenticRunner:
                     f"补齐失败: {relative}",
                     {"error": result.error},
                 )
+
+    def _collect_unresolved_signals(self) -> None:
+        """扫描输出文件，收集仍未修复的迁移信号并写入报告。"""
+        signals: list[dict] = []
+        for file in self.ctx.files:
+            if not file.relative_path.endswith(".py"):
+                continue
+            output_path = self.guard.resolve_output(file.relative_path)
+            if not output_path.is_file():
+                continue
+            text = output_path.read_text(
+                encoding="utf-8-sig",
+                errors="ignore",
+            )
+            signals.extend(scan_python_signals(text, file.relative_path))
+        self.state.unresolved_signals = signals
+        if signals:
+            self.state.add_audit(
+                "agentic",
+                f"未修复信号 {len(signals)} 个",
+                {"signals": signals},
+            )
 
     def _record_applied_item(
         self,

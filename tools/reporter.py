@@ -36,6 +36,16 @@ def write_report(state: MigrationState, workspace: AuditWorkspace) -> Path:
                 lines.append(f"- 错误: {item.error}")
             lines.append("")
 
+    if state.unresolved_signals:
+        lines.append("## 未修复信号")
+        lines.append("")
+        for signal in state.unresolved_signals:
+            lines.append(
+                f"- {signal.get('file')} 第 {signal.get('line')} 行: "
+                f"{signal.get('message')}"
+            )
+        lines.append("")
+
     report_path = workspace.state.audit_dir() / "report.md"
     report_path.write_text("\n".join(lines), encoding="utf-8")
     return report_path
