@@ -287,6 +287,62 @@ class AgenticRunnerTests(unittest.TestCase):
                 )
             )
 
+    def test_agentic_flags_edit_with_remaining_signal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            item = {
+                "file": "a.py",
+                "new_content": (
+                    "class A:\n"
+                    "    def close(self):\n"
+                    "        pass\n"
+                    "    def __del__(self):\n"
+                    "        self.close()\n"
+                ),
+                "evidence": {"doc_id": "d1"},
+                "impact": "low",
+            }
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}},
+                {
+                    "thought": "编辑",
+                    "action": "apply_edit",
+                    "params": {"item": item},
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            llm = RecordingAgentLLM(decisions)
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=llm,
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue(
+                any(
+                    "信号仍存在" in message["content"]
+                    for history in llm.histories
+                    for message in history
+                )
+            )
+
     def test_agentic_max_iterations_force_finishes(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"
@@ -390,6 +446,7 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertIn("rules/03_迁移决策规范.md", prompt)
             self.assertIn("最多执行", prompt)
             self.assertIn("不要重复读取", prompt)
+            self.assertIn("不能只叠加新写法", prompt)
             self.assertNotIn("以下为项目约束上下文，必须遵守", prompt)
 
     def test_agentic_skips_duplicate_read_document(self):

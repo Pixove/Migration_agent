@@ -412,6 +412,28 @@ class AgenticRunner:
                         self._edit_previews[preview["file"]] = preview
                 if action in ("apply_patch", "apply_edit"):
                     self._record_applied_item(action, params, result.result)
+                if action == "apply_edit":
+                    remaining_signals = self._signals_after_edit(
+                        edit_item,
+                        result.result,
+                    )
+                    if remaining_signals:
+                        self.state.add_audit(
+                            "agentic",
+                            f"编辑后信号仍存在: {edit_item.get('file')}",
+                            {"signals": remaining_signals},
+                        )
+                        history.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "编辑已应用但信号仍存在："
+                                    f"{json.dumps(remaining_signals, ensure_ascii=False)}。"
+                                    "请继续修复，移除旧写法（如 __del__），"
+                                    "不能只叠加新写法。"
+                                ),
+                            }
+                        )
                 history.append({"role": "assistant", "content": raw})
                 history.append(
                     {
@@ -543,6 +565,19 @@ class AgenticRunner:
             signals.extend(scan_python_signals(text, file.relative_path))
         return signals
 
+    def _signals_after_edit(self, edit_item: dict, payload: Any) -> list[dict]:
+        """复验编辑后的输出文件是否仍存在迁移信号。"""
+        if not isinstance(payload, dict) or not payload.get("output_path"):
+            return []
+        output_path = Path(payload["output_path"])
+        if not output_path.is_file():
+            return []
+        text = output_path.read_text(
+            encoding="utf-8-sig",
+            errors="ignore",
+        )
+        return scan_python_signals(text, edit_item.get("file", ""))
+
     def _record_applied_item(
         self,
         action: str,
@@ -624,7 +659,9 @@ class AgenticRunner:
             "先读取必要文档与源码，读取阶段不会被打断；"
             "开始执行（propose_plan/编辑/应用/验证）后进入执行阶段；\n"
             "进入执行阶段后 harness 会提供迁移信号清单，"
-            "必须逐一 resolve 或给出理由。"
+            "必须逐一 resolve 或给出理由；\n"
+            "编辑必须移除信号对应的旧写法，不能只叠加新写法；"
+            "编辑后 harness 会复验信号是否消除。"
         )
 
     def _trim_history(self, messages: list[dict]) -> list[dict]:
