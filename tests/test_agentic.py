@@ -89,13 +89,14 @@ class AgenticRunnerTests(unittest.TestCase):
             output = Path(tmp) / "out"
             source.mkdir()
             (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            (source / "b.py").write_text("y = 2\n", encoding="utf-8")
             decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}},
                 {
-                    "thought": "生成报告",
+                    "thought": "收尾",
                     "action": "write_report",
                     "params": {},
                 },
-                {"thought": "不会执行", "action": "finish", "params": {}},
             ]
             config = load_config("config.yaml")
             config.retrieval.vector_enabled = False
@@ -110,8 +111,13 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertEqual(state.phase.value, "done")
             self.assertTrue((state.audit_dir() / "report.md").is_file())
             self.assertTrue(
-                any("自动结束" in entry.message for entry in state.audit_entries)
+                any("统一生成" in entry.message for entry in state.audit_entries)
             )
+            report = (state.audit_dir() / "report.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("a.py", report)
+            self.assertIn("b.py", report)
 
     def test_agentic_finalizes_unhandled_files(self):
         with tempfile.TemporaryDirectory() as tmp:

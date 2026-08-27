@@ -22,6 +22,7 @@ from migration.registry import load_profile
 from retrieval import HybridRetriever
 from retrieval.knowledge_base import KnowledgeBase
 from tools.patcher import apply_plan_item
+from tools.reporter import write_report as generate_report
 
 MAX_AGENT_ITERATIONS = 20
 MAX_HISTORY_MESSAGES = 40
@@ -233,6 +234,14 @@ class AgenticRunner:
                 )
                 return
 
+            if action == "write_report":
+                self.state.add_audit(
+                    "agentic",
+                    "报告由系统在收尾统一生成，Agent 提前结束",
+                )
+                self.workspace.save_state()
+                return
+
             if action == "read_document":
                 doc_path = params.get("path", "")
                 if doc_path in self._read_docs:
@@ -381,13 +390,6 @@ class AgenticRunner:
                     }
                 )
             self.workspace.save_state()
-            if action == "write_report" and result.success:
-                self.state.add_audit(
-                    "agentic",
-                    "报告已生成，Agent 自动结束",
-                )
-                self.workspace.save_state()
-                return
 
         raise RuntimeError(f"Agent 超过最大迭代次数 {MAX_AGENT_ITERATIONS}")
 
@@ -398,11 +400,8 @@ class AgenticRunner:
         self.state.transition(Phase.VERIFY)
         self._finalize_missing_files()
         self.state.transition(Phase.REPORT)
-        if self.dispatcher.call_counts().get("write_report", 0) == 0:
-            result = self.dispatcher.call("write_report")
-            if not result.success:
-                raise RuntimeError(f"write_report 失败: {result.error}")
-        self.state.add_audit("agentic", "报告生成完成")
+        report = generate_report(self.state, self.workspace)
+        self.state.add_audit("agentic", f"报告已生成: {report.name}")
         self.workspace.save_state()
         self.state.transition(Phase.DONE)
         self.workspace.save_state()

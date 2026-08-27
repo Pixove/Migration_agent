@@ -24,7 +24,8 @@ def write_report(state: MigrationState, workspace: AuditWorkspace) -> Path:
         lines.append("暂无计划条目。")
     else:
         for item in state.plan_items:
-            lines.append(f"### {item.id}: {item.file}")
+            lines.append(f"### {item.file}")
+            lines.append(f"- 编号: {item.id}")
             lines.append(f"- 问题: {item.issue}")
             lines.append(f"- 动作: {item.action}")
             lines.append(f"- 影响面: {item.impact}")
