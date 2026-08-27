@@ -40,6 +40,20 @@ class ContextLoaderTests(unittest.TestCase):
         self.assertIn("证据", red_lines)
         self.assertIn("输入项目只读", red_lines)
 
+    def test_plan_messages_include_signals(self):
+        messages = build_plan_messages(
+            ["a.py"],
+            signals=[
+                {
+                    "file": "a.py",
+                    "line": 1,
+                    "kind": "destructor",
+                    "message": "__del__ 不可靠",
+                }
+            ],
+        )
+        self.assertIn("signals", messages[1]["content"])
+
 
 if __name__ == "__main__":
     unittest.main()

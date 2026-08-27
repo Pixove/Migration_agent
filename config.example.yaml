@@ -78,6 +78,7 @@ guardrails:
     - read_document
     - propose_edit
     - apply_edit
+    - read_source
 
   # 影响面分级: low | medium | high
   # 低于等于该等级的计划条目可自动应用

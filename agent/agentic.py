@@ -63,6 +63,11 @@ TOOL_DESCRIPTIONS = [
         "description": "应用语义编辑到输出目录",
         "params": {"item": "object"},
     },
+    {
+        "name": "read_source",
+        "description": "按需读取输入项目源文件",
+        "params": {"path": "string", "max_chars": "integer（可选）"},
+    },
 ]
 
 

@@ -52,6 +52,7 @@ def refactor_ratio(plan_items: list[PlanItem], file_lines: dict[str, int]) -> fl
 def build_plan_messages(
     files: list[str],
     evidence: list[dict] | None = None,
+    signals: list[dict] | None = None,
 ) -> list[dict[str, str]]:
     """组装规划阶段消息，注入入口文件、规则与技能上下文。"""
     context = build_planning_context()
@@ -62,6 +63,8 @@ def build_plan_messages(
     payload: dict = {"files": files}
     if evidence:
         payload["evidence"] = evidence
+    if signals:
+        payload["signals"] = signals
 
     return [
         {"role": "system", "content": system},
@@ -74,6 +77,7 @@ def generate_llm_plan(
     files: list[str],
     evidence: list[dict] | None = None,
     evidence_pool: list[str] | None = None,
+    signals: list[dict] | None = None,
 ) -> list[PlanItem]:
     """按批让大模型生成迁移计划，并严格校验每条计划。"""
     evidence_by_file = {entry.get("file"): entry for entry in (evidence or [])}
@@ -87,8 +91,19 @@ def generate_llm_plan(
             if file in evidence_by_file
         ]
         batch_pool = _evidence_pool_from(batch_evidence) or evidence_pool
+        batch_signals = [
+            signal
+            for signal in (signals or [])
+            if signal.get("file") in batch
+        ]
         plan.extend(
-            _generate_batch(client, batch, batch_evidence, batch_pool)
+            _generate_batch(
+                client,
+                batch,
+                batch_evidence,
+                batch_pool,
+                batch_signals,
+            )
         )
 
     for index, item in enumerate(plan, start=1):
@@ -101,9 +116,10 @@ def _generate_batch(
     files: list[str],
     evidence: list[dict],
     evidence_pool: list[str] | None,
+    signals: list[dict] | None = None,
 ) -> list[PlanItem]:
     """生成并校验一批文件的迁移计划。"""
-    messages = build_plan_messages(files, evidence=evidence)
+    messages = build_plan_messages(files, evidence=evidence, signals=signals)
     raw = client.complete(
         messages,
         max_tokens=PLAN_MAX_TOKENS,

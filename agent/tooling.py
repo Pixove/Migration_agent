@@ -14,6 +14,7 @@ from agent.guardrails import Budget, PathGuard, ToolRegistry
 from agent.llm import LLMClient, LLMError
 from agent.planning import build_fallback_plan, generate_llm_plan
 from agent.state import AuditWorkspace, MigrationState, PlanItem
+from migration.scan_signals import scan_python_signals
 from retrieval import HybridRetriever
 from retrieval.documents import RetrievalError
 from tools.patcher import apply_edit_item, apply_line_edit, apply_plan_item
@@ -22,6 +23,16 @@ from tools.scanner import FileInfo, scan_project
 from tools.verifier import verify_file
 
 ALLOWED_DOC_PREFIXES = ("rules/", "skills/")
+ALLOWED_SOURCE_EXTENSIONS = {
+    ".py",
+    ".txt",
+    ".md",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".toml",
+    ".ini",
+}
 
 
 @dataclass
@@ -73,9 +84,24 @@ def _propose_plan(
     files: list[str] | None = None,
     evidence: list[dict] | None = None,
     evidence_pool: list[str] | None = None,
+    signals: list[dict] | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
     file_paths = files or [file.relative_path for file in ctx.files]
+    if signals is None:
+        signals = []
+        for file in file_paths:
+            if not file.endswith(".py"):
+                continue
+            try:
+                source_path = ctx.guard.resolve_source(file)
+                text = source_path.read_text(
+                    encoding="utf-8-sig",
+                    errors="ignore",
+                )
+                signals.extend(scan_python_signals(text, file))
+            except Exception:
+                continue
     if ctx.llm is None:
         return {
             "source": "fallback",
@@ -88,6 +114,7 @@ def _propose_plan(
             file_paths,
             evidence=evidence,
             evidence_pool=evidence_pool,
+            signals=signals,
         )
         return {
             "source": "llm",
@@ -193,6 +220,31 @@ def _read_document(
     return {"path": normalized, "content": content, "truncated": truncated}
 
 
+def _read_source(
+    ctx: ToolContext,
+    path: str = "",
+    max_chars: int = 8000,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """按需读取输入项目内的源文件内容。"""
+    if not path:
+        raise ValueError("read_source 需要 path 参数")
+    raw = Path(path)
+    if raw.is_absolute():
+        raise ValueError("read_source 只接受相对路径")
+    normalized = raw.as_posix()
+    target = ctx.guard.resolve_source(normalized)
+    if target.suffix.lower() not in ALLOWED_SOURCE_EXTENSIONS:
+        raise ValueError(f"不支持的文件类型: {path}")
+    if not target.is_file():
+        raise ValueError(f"文件不存在: {path}")
+    content = target.read_text(encoding="utf-8-sig", errors="ignore")
+    truncated = len(content) > max_chars
+    if truncated:
+        content = content[:max_chars]
+    return {"path": normalized, "content": content, "truncated": truncated}
+
+
 def _validate_edit_item(item: Any) -> dict:
     if not isinstance(item, dict):
         raise ValueError("编辑条目必须是对象")
@@ -265,6 +317,7 @@ def register_tools(dispatcher: ToolDispatcher, ctx: ToolContext) -> None:
         ToolSpec("read_document", "按需读取规则/技能/文档", _read_document, max_calls=10),
         ToolSpec("propose_edit", "生成语义编辑 diff 预览（不写文件）", _propose_edit, max_calls=20),
         ToolSpec("apply_edit", "应用语义编辑到输出目录", _apply_edit, max_calls=100),
+        ToolSpec("read_source", "按需读取输入项目源文件", _read_source, max_calls=20),
     ]
     for spec in specs:
         dispatcher.register(

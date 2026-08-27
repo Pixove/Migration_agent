@@ -67,6 +67,7 @@ class GuardrailsConfig:
             "read_document",
             "propose_edit",
             "apply_edit",
+            "read_source",
         ]
     )
     auto_apply_max_impact: str = "low"
