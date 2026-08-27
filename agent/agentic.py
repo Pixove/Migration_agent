@@ -23,6 +23,7 @@ from retrieval import HybridRetriever
 from retrieval.knowledge_base import KnowledgeBase
 
 MAX_AGENT_ITERATIONS = 20
+MAX_HISTORY_MESSAGES = 40
 
 TOOL_DESCRIPTIONS = [
     {"name": "scan_files", "description": "扫描输入项目，返回文件清单", "params": {}},
@@ -172,6 +173,8 @@ class AgenticRunner:
                         ),
                     }
                 )
+
+            history = self._trim_history(history)
 
             raw = None
             decision = None
@@ -394,6 +397,27 @@ class AgenticRunner:
             "语义问题（内存泄漏/并发/废弃 API）必须使用 propose_edit 与 "
             "apply_edit，apply_patch 只用于固定语法规则；\n"
             "write_report 生成报告后任务即完成，应结束循环。"
+        )
+
+    def _trim_history(self, messages: list[dict]) -> list[dict]:
+        """裁剪历史：保留 system、最新消息，并插入运行摘要。"""
+        if len(messages) <= MAX_HISTORY_MESSAGES:
+            return messages
+        head = [messages[0]]
+        summary = {
+            "role": "user",
+            "content": f"（历史已裁剪）当前运行摘要：{self._state_summary()}",
+        }
+        tail = messages[-(MAX_HISTORY_MESSAGES - 2):]
+        return head + [summary] + tail
+
+    def _state_summary(self) -> str:
+        counts = self.dispatcher.call_counts()
+        return (
+            f"已调用工具 {sum(counts.values())} 次；"
+            f"已应用补丁 {counts.get('apply_patch', 0)} 次；"
+            f"已读取文档 {len(self._read_docs)} 份；"
+            f"报告已生成 {counts.get('write_report', 0) > 0}"
         )
 
     def _default_confirm(self, item: dict) -> bool:

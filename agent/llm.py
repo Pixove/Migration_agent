@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -100,17 +101,28 @@ class OpenAICompatibleClient(LLMClient):
             "temperature": self.config.temperature if temperature is None else temperature,
             "max_tokens": self.config.max_tokens if max_tokens is None else max_tokens,
         }
-        if json_mode:
-            payload["response_format"] = {"type": "json_object"}
-        try:
-            response = requests.post(
-                f"{self.base_url}/chat/completions",
-                headers=self._headers(),
-                json=payload,
-                timeout=self._timeout(),
-            )
-        except requests.RequestException as exc:
-            raise LLMError(f"OpenAI 兼容服务请求失败: {exc}") from exc
+        response = None
+        last_error: Exception | None = None
+        for attempt in range(3):
+            current = dict(payload)
+            if json_mode and attempt == 0:
+                current["response_format"] = {"type": "json_object"}
+            try:
+                response = requests.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self._headers(),
+                    json=current,
+                    timeout=self._timeout(),
+                )
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(1 + attempt)
+        if response is None:
+            raise LLMError(
+                f"OpenAI 兼容服务请求失败: {last_error}"
+            ) from last_error
 
         if response.status_code != 200:
             raise LLMError(f"OpenAI 兼容服务返回 {response.status_code}: {response.text[:500]}")
@@ -156,16 +168,25 @@ class OllamaClient(LLMClient):
                 "num_predict": self.config.max_tokens if max_tokens is None else max_tokens,
             },
         }
-        if json_mode:
-            payload["format"] = "json"
-        try:
-            response = requests.post(
-                f"{self.base_url}/api/chat",
-                json=payload,
-                timeout=self._timeout(),
-            )
-        except requests.RequestException as exc:
-            raise LLMError(f"Ollama 请求失败: {exc}") from exc
+        response = None
+        last_error: Exception | None = None
+        for attempt in range(3):
+            current = dict(payload)
+            if json_mode and attempt == 0:
+                current["format"] = "json"
+            try:
+                response = requests.post(
+                    f"{self.base_url}/api/chat",
+                    json=current,
+                    timeout=self._timeout(),
+                )
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(1 + attempt)
+        if response is None:
+            raise LLMError(f"Ollama 请求失败: {last_error}") from last_error
 
         if response.status_code != 200:
             raise LLMError(f"Ollama 返回 {response.status_code}: {response.text[:500]}")

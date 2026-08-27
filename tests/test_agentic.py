@@ -165,6 +165,30 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertEqual(state.phase.value, "done")
             self.assertEqual(runner.dispatcher.call_counts()["read_document"], 1)
 
+    def test_history_trim_keeps_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM([{"action": "finish", "params": {}}]),
+            )
+            messages = [{"role": "system", "content": "s"}] + [
+                {"role": "user", "content": str(index)}
+                for index in range(60)
+            ]
+            trimmed = runner._trim_history(messages)
+            self.assertEqual(len(trimmed), 40)
+            self.assertEqual(trimmed[0], messages[0])
+            self.assertIn("当前运行摘要", trimmed[1]["content"])
+            self.assertEqual(trimmed[-1], messages[-1])
+
     def test_agentic_loop_completes(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"
