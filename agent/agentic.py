@@ -358,6 +358,8 @@ class AgenticRunner:
                     preview = result.result
                     if isinstance(preview, dict) and preview.get("file"):
                         self._edit_previews[preview["file"]] = preview
+                if action in ("apply_patch", "apply_edit"):
+                    self._record_applied_item(action, params, result.result)
                 history.append({"role": "assistant", "content": raw})
                 history.append(
                     {
@@ -421,6 +423,17 @@ class AgenticRunner:
             )
             result = apply_plan_item(item, self.guard)
             if result.success:
+                self.state.add_plan_item(
+                    PlanItem(
+                        id=f"final-{relative}",
+                        file=relative,
+                        issue="未处理文件补齐为原样复制",
+                        action="copy",
+                        impact="low",
+                        status="applied",
+                        output_file=relative,
+                    )
+                )
                 self.state.add_audit(
                     "agentic",
                     f"补齐未处理文件: {relative}",
@@ -431,6 +444,59 @@ class AgenticRunner:
                     f"补齐失败: {relative}",
                     {"error": result.error},
                 )
+
+    def _record_applied_item(
+        self,
+        action: str,
+        params: dict,
+        payload: Any,
+    ) -> None:
+        item_raw = (
+            params.get("item")
+            if isinstance(params.get("item"), dict)
+            else {}
+        )
+        file = item_raw.get("file", "")
+        if not file:
+            return
+        evidence = item_raw.get("evidence", {})
+        if isinstance(evidence, str):
+            evidence = {"note": evidence}
+        if not isinstance(evidence, dict):
+            evidence = {}
+
+        if action == "apply_patch":
+            plan_item = PlanItem(
+                id=item_raw.get("id") or f"applied-{file}",
+                file=file,
+                issue=item_raw.get("issue", "应用计划"),
+                action=item_raw.get("action", "copy"),
+                impact=item_raw.get("impact", "low"),
+                evidence=evidence,
+                status="applied",
+                output_file=self._relative_output(payload),
+            )
+        else:
+            plan_item = PlanItem(
+                id=f"edit-{file}",
+                file=file,
+                issue=item_raw.get("issue", "语义编辑"),
+                action="edit",
+                impact=item_raw.get("impact", "low"),
+                evidence=evidence,
+                status="applied",
+                output_file=self._relative_output(payload),
+            )
+        self.state.add_plan_item(plan_item)
+
+    def _relative_output(self, payload: Any) -> str | None:
+        if not isinstance(payload, dict) or not payload.get("output_path"):
+            return None
+        output_path = Path(payload["output_path"])
+        try:
+            return output_path.relative_to(self.state.output_root).as_posix()
+        except ValueError:
+            return str(output_path)
 
     def _system_prompt(self) -> str:
         index = build_document_index()

@@ -137,6 +137,7 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertEqual(state.phase.value, "done")
             self.assertTrue((output / "a.py").is_file())
             self.assertTrue((output / "b.py").is_file())
+            self.assertEqual(len(state.plan_items), 2)
 
     def test_system_prompt_uses_index_and_red_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -265,6 +266,8 @@ class AgenticRunnerTests(unittest.TestCase):
                 runner.dispatcher.call_counts()["scan_files"],
                 1,
             )
+            self.assertEqual(len(state.plan_items), 1)
+            self.assertEqual(state.plan_items[0].status, "applied")
 
     def test_agentic_semantic_edit_flow(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -307,6 +310,7 @@ class AgenticRunnerTests(unittest.TestCase):
             )
             state = runner.run()
             self.assertEqual(state.phase.value, "done")
+            self.assertEqual(state.plan_items[0].action, "edit")
             self.assertEqual(
                 (output / "a.py").read_text(encoding="utf-8"),
                 "x = 2\n",
