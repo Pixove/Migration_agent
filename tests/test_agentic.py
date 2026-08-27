@@ -55,6 +55,32 @@ class LoopScanLLM:
         )
 
 
+class RecordingAgentLLM:
+    def __init__(self, decisions):
+        self.decisions = decisions
+        self.histories = []
+        self._index = 0
+
+    def complete(self, messages, **kwargs):
+        self.histories.append([dict(message) for message in messages])
+        system = messages[0]["content"] if messages else ""
+        if "迁移规划器" in system:
+            payload = json.loads(messages[1]["content"])
+            items = [
+                {
+                    "file": name,
+                    "issue": "x",
+                    "action": "copy",
+                    "impact": "low",
+                }
+                for name in payload.get("files", [])
+            ]
+            return json.dumps({"items": items}, ensure_ascii=False)
+        decision = self.decisions[min(self._index, len(self.decisions) - 1)]
+        self._index += 1
+        return json.dumps(decision, ensure_ascii=False)
+
+
 class AgenticRunnerTests(unittest.TestCase):
     def test_agentic_retries_invalid_json(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -217,6 +243,49 @@ class AgenticRunnerTests(unittest.TestCase):
                 encoding="utf-8"
             )
             self.assertIn("未修复信号", report)
+
+    def test_agentic_injects_signals_on_execute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}},
+                {
+                    "thought": "应用",
+                    "action": "apply_patch",
+                    "params": {
+                        "item": {
+                            "id": "p1",
+                            "file": "a.py",
+                            "issue": "x",
+                            "action": "copy",
+                            "impact": "low",
+                        }
+                    },
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            llm = RecordingAgentLLM(decisions)
+            runner = AgenticRunner(config, source, output, llm=llm)
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue(
+                any(
+                    "迁移信号清单" in message["content"]
+                    for history in llm.histories
+                    for message in history
+                )
+            )
 
     def test_agentic_max_iterations_force_finishes(self):
         with tempfile.TemporaryDirectory() as tmp:

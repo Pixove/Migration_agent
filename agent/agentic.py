@@ -258,6 +258,18 @@ class AgenticRunner:
             if self._phase == "read" and action in EXECUTE_ACTIONS:
                 self._phase = "execute"
                 self.state.add_audit("agentic", "进入执行阶段")
+                signals = self._collect_signals_for_files()
+                if signals:
+                    history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "迁移信号清单（必须逐一处理，"
+                                "resolve 或给出理由，不允许漏过）：\n"
+                                f"{json.dumps(signals, ensure_ascii=False)}"
+                            ),
+                        }
+                    )
             consecutive_read_only = (
                 consecutive_read_only + 1 if read_only else 0
             )
@@ -515,6 +527,22 @@ class AgenticRunner:
                 {"signals": signals},
             )
 
+    def _collect_signals_for_files(self) -> list[dict]:
+        """扫描输入项目文件，汇总当前迁移信号。"""
+        signals: list[dict] = []
+        for file in self.ctx.files:
+            if not file.relative_path.endswith(".py"):
+                continue
+            source_path = self.guard.resolve_source(file.relative_path)
+            if not source_path.is_file():
+                continue
+            text = source_path.read_text(
+                encoding="utf-8-sig",
+                errors="ignore",
+            )
+            signals.extend(scan_python_signals(text, file.relative_path))
+        return signals
+
     def _record_applied_item(
         self,
         action: str,
@@ -594,7 +622,9 @@ class AgenticRunner:
             "apply_edit，apply_patch 只用于固定语法规则；\n"
             "write_report 生成报告后任务即完成，应结束循环；\n"
             "先读取必要文档与源码，读取阶段不会被打断；"
-            "开始执行（propose_plan/编辑/应用/验证）后进入执行阶段。"
+            "开始执行（propose_plan/编辑/应用/验证）后进入执行阶段；\n"
+            "进入执行阶段后 harness 会提供迁移信号清单，"
+            "必须逐一 resolve 或给出理由。"
         )
 
     def _trim_history(self, messages: list[dict]) -> list[dict]:
