@@ -85,7 +85,40 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertIn("红线（必须遵守", prompt)
             self.assertIn("read_document", prompt)
             self.assertIn("rules/03_迁移决策规范.md", prompt)
+            self.assertIn("最多执行", prompt)
+            self.assertIn("不要重复读取", prompt)
             self.assertNotIn("以下为项目约束上下文，必须遵守", prompt)
+
+    def test_agentic_skips_duplicate_read_document(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            decisions = [
+                {
+                    "thought": "读规则",
+                    "action": "read_document",
+                    "params": {"path": "rules/00_总则.md"},
+                },
+                {
+                    "thought": "再读",
+                    "action": "read_document",
+                    "params": {"path": "rules/00_总则.md"},
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertEqual(runner.dispatcher.call_counts()["read_document"], 1)
 
     def test_agentic_loop_completes(self):
         with tempfile.TemporaryDirectory() as tmp:

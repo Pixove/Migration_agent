@@ -102,6 +102,7 @@ class AgenticRunner:
         self.llm = llm or create_llm_client(config.llm)
         self._approve_all_remaining = False
         self._edit_previews: dict[str, dict] = {}
+        self._read_docs: set[str] = set()
         self._reviewer = reviewer or (
             lambda item, diff: review_edit(self.llm, item, diff)
         )
@@ -160,6 +161,18 @@ class AgenticRunner:
         ]
 
         for iteration in range(MAX_AGENT_ITERATIONS):
+            remaining = MAX_AGENT_ITERATIONS - iteration
+            if remaining <= 3:
+                history.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"注意：剩余轮次仅 {remaining} 次，"
+                            "请尽快完成关键操作并返回 finish。"
+                        ),
+                    }
+                )
+
             raw = None
             decision = None
             for attempt in range(3):
@@ -202,6 +215,25 @@ class AgenticRunner:
                     f"Agent 自主结束，共 {iteration + 1} 轮",
                 )
                 return
+
+            if action == "read_document":
+                doc_path = params.get("path", "")
+                if doc_path in self._read_docs:
+                    self.state.add_audit(
+                        "agentic",
+                        f"重复读取文档已跳过: {doc_path}",
+                    )
+                    history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"文档 {doc_path} 已在历史中，"
+                                "请直接使用历史内容，不要重复读取。"
+                            ),
+                        }
+                    )
+                    self.workspace.save_state()
+                    continue
 
             if action == "apply_edit":
                 edit_item = (
@@ -283,6 +315,10 @@ class AgenticRunner:
                 },
             )
             if result.success:
+                if action == "read_document":
+                    doc_path = params.get("path")
+                    if doc_path:
+                        self._read_docs.add(doc_path)
                 if action == "propose_edit":
                     preview = result.result
                     if isinstance(preview, dict) and preview.get("file"):
@@ -343,7 +379,11 @@ class AgenticRunner:
             f"{index}\n\n"
             f"{red_lines}\n"
             "需要规则或技能细节时，调用 read_document(path) 按需读取，"
-            "不要一次性读取全部文档。"
+            "不要一次性读取全部文档。\n"
+            f"轮次约束：最多执行 {MAX_AGENT_ITERATIONS} 轮，"
+            "完成任务后立即返回 finish；\n"
+            "同一文档只读取一次，不要重复读取；\n"
+            "轮次接近上限时会收到提醒，请尽快收尾。"
         )
 
     def _default_confirm(self, item: dict) -> bool:
