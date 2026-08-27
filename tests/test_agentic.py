@@ -48,6 +48,13 @@ class FlakyAgentLLM:
         return response
 
 
+class LoopScanLLM:
+    def complete(self, messages, **kwargs):
+        return json.dumps(
+            {"thought": "扫描", "action": "scan_files", "params": {}}
+        )
+
+
 class AgenticRunnerTests(unittest.TestCase):
     def test_agentic_retries_invalid_json(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -82,6 +89,78 @@ class AgenticRunnerTests(unittest.TestCase):
             runner = AgenticRunner(config, source, output, llm=llm)
             with self.assertRaises(LLMError):
                 runner.run()
+
+    def test_agentic_read_only_loop_auto_finishes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}},
+                {
+                    "thought": "读源码",
+                    "action": "read_source",
+                    "params": {"path": "a.py"},
+                },
+                {
+                    "thought": "读源码",
+                    "action": "read_source",
+                    "params": {"path": "a.py"},
+                },
+                {
+                    "thought": "读源码",
+                    "action": "read_source",
+                    "params": {"path": "a.py"},
+                },
+                {
+                    "thought": "读源码",
+                    "action": "read_source",
+                    "params": {"path": "a.py"},
+                },
+                {
+                    "thought": "读源码",
+                    "action": "read_source",
+                    "params": {"path": "a.py"},
+                },
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue((output / "a.py").is_file())
+            self.assertTrue(
+                any("连续只读" in entry.message for entry in state.audit_entries)
+            )
+
+    def test_agentic_max_iterations_force_finishes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=LoopScanLLM(),
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue((output / "a.py").is_file())
+            self.assertTrue(
+                any("强制收尾" in entry.message for entry in state.audit_entries)
+            )
 
     def test_agentic_auto_finishes_after_report(self):
         with tempfile.TemporaryDirectory() as tmp:

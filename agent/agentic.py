@@ -176,6 +176,7 @@ class AgenticRunner:
             },
         ]
 
+        consecutive_read_only = 0
         for iteration in range(MAX_AGENT_ITERATIONS):
             remaining = MAX_AGENT_ITERATIONS - iteration
             if remaining <= 3:
@@ -238,6 +239,22 @@ class AgenticRunner:
                 self.state.add_audit(
                     "agentic",
                     "报告由系统在收尾统一生成，Agent 提前结束",
+                )
+                self.workspace.save_state()
+                return
+
+            read_only = action in (
+                "read_document",
+                "read_source",
+                "retrieve_examples",
+            )
+            consecutive_read_only = (
+                consecutive_read_only + 1 if read_only else 0
+            )
+            if consecutive_read_only >= 5:
+                self.state.add_audit(
+                    "agentic",
+                    "连续只读操作过多，Agent 自动结束",
                 )
                 self.workspace.save_state()
                 return
@@ -391,7 +408,11 @@ class AgenticRunner:
                 )
             self.workspace.save_state()
 
-        raise RuntimeError(f"Agent 超过最大迭代次数 {MAX_AGENT_ITERATIONS}")
+        self.state.add_audit(
+            "agentic",
+            f"达到最大迭代次数 {MAX_AGENT_ITERATIONS}，强制收尾",
+        )
+        self.workspace.save_state()
 
     def _finish(self) -> None:
         self.state.transition(Phase.RETRIEVE)
