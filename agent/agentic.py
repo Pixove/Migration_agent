@@ -56,12 +56,20 @@ TOOL_DESCRIPTIONS = [
     {
         "name": "propose_edit",
         "description": "生成语义编辑 diff 预览（不写文件）",
-        "params": {"item": "object"},
+        "params": {
+            "item": "object（字段：file, start_line, end_line, "
+            "new_content 或 replacement, evidence, impact；"
+            "缺省行范围时整文件替换）"
+        },
     },
     {
         "name": "apply_edit",
         "description": "应用语义编辑到输出目录",
-        "params": {"item": "object"},
+        "params": {
+            "item": "object（字段：file, start_line, end_line, "
+            "new_content 或 replacement, evidence, impact；"
+            "缺省行范围时整文件替换）"
+        },
     },
     {
         "name": "read_source",

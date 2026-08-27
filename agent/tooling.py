@@ -245,33 +245,45 @@ def _read_source(
     return {"path": normalized, "content": content, "truncated": truncated}
 
 
-def _validate_edit_item(item: Any) -> dict:
+def _normalize_edit_item(item: Any, ctx: ToolContext) -> dict:
+    """校验并归一化编辑条目：兼容 replacement、推断整文件行范围。"""
     if not isinstance(item, dict):
         raise ValueError("编辑条目必须是对象")
     file = str(item.get("file", ""))
     if not file:
         raise ValueError("编辑条目缺少 file")
-    start = item.get("start_line")
-    end = item.get("end_line")
-    content = item.get("new_content")
-    if not isinstance(start, int) or not isinstance(end, int):
-        raise ValueError("start_line/end_line 必须是整数")
-    if start < 1 or end < start:
-        raise ValueError(f"无效行范围: {start}-{end}")
+    content = item.get("new_content") or item.get("replacement")
     if not isinstance(content, str) or not content.strip():
-        raise ValueError("编辑条目缺少 new_content")
+        raise ValueError("编辑条目缺少 new_content（或 replacement）")
     evidence = item.get("evidence")
     if not isinstance(evidence, dict) or not evidence:
         raise ValueError("编辑必须携带证据")
     impact = str(item.get("impact", ""))
     if impact not in VALID_IMPACT_LEVELS:
         raise ValueError(f"非法影响面: {impact}")
-    return item
+
+    source_path = ctx.guard.resolve_source(file)
+    source_text = source_path.read_text(encoding="utf-8-sig", errors="ignore")
+    line_count = len(source_text.splitlines())
+    start = item.get("start_line")
+    end = item.get("end_line")
+    if not isinstance(start, int) or not isinstance(end, int):
+        start, end = 1, line_count
+    if start < 1 or end < start or end > line_count:
+        raise ValueError(
+            f"无效行范围: {start}-{end}，文件共 {line_count} 行"
+        )
+
+    normalized = dict(item)
+    normalized["new_content"] = content
+    normalized["start_line"] = start
+    normalized["end_line"] = end
+    return normalized
 
 
 def _propose_edit(ctx: ToolContext, item: Any = None, **kwargs: Any) -> dict[str, Any]:
     """生成语义编辑 diff 预览，不写任何文件。"""
-    item = _validate_edit_item(item)
+    item = _normalize_edit_item(item, ctx)
     source_path = ctx.guard.resolve_source(item["file"])
     source_text = source_path.read_text(encoding="utf-8-sig", errors="ignore")
     new_text = apply_line_edit(
@@ -293,7 +305,7 @@ def _propose_edit(ctx: ToolContext, item: Any = None, **kwargs: Any) -> dict[str
 
 def _apply_edit(ctx: ToolContext, item: Any = None, **kwargs: Any) -> dict[str, Any]:
     """应用一条语义编辑到输出目录。"""
-    item = _validate_edit_item(item)
+    item = _normalize_edit_item(item, ctx)
     result = apply_edit_item(item, ctx.guard)
     return {
         "success": result.success,

@@ -68,6 +68,23 @@ class EditToolTests(unittest.TestCase):
             result = dispatcher.call("apply_edit", item=item)
             self.assertFalse(result.success)
 
+    def test_replacement_alias_and_whole_file_inference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dispatcher, output = self._build(tmp)
+            item = {
+                "file": "a.py",
+                "replacement": "x = 99\n",
+                "reason": "semantic",
+                "evidence": {"doc_id": "d1"},
+                "impact": "low",
+            }
+            result = dispatcher.call("apply_edit", item=item)
+            self.assertTrue(result.success)
+            self.assertEqual(
+                (output / "a.py").read_text(encoding="utf-8"),
+                "x = 99\n",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
