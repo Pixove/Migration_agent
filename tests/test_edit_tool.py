@@ -85,6 +85,18 @@ class EditToolTests(unittest.TestCase):
                 "x = 99\n",
             )
 
+    def test_string_evidence_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dispatcher, output = self._build(tmp)
+            item = dict(EDIT_ITEM)
+            item["evidence"] = "知识库说明：建议使用上下文管理器"
+            result = dispatcher.call("apply_edit", item=item)
+            self.assertTrue(result.success)
+            self.assertEqual(
+                (output / "a.py").read_text(encoding="utf-8"),
+                "x = 2\n",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

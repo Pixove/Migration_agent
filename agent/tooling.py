@@ -256,6 +256,8 @@ def _normalize_edit_item(item: Any, ctx: ToolContext) -> dict:
     if not isinstance(content, str) or not content.strip():
         raise ValueError("编辑条目缺少 new_content（或 replacement）")
     evidence = item.get("evidence")
+    if isinstance(evidence, str) and evidence.strip():
+        evidence = {"note": evidence}
     if not isinstance(evidence, dict) or not evidence:
         raise ValueError("编辑必须携带证据")
     impact = str(item.get("impact", ""))
@@ -278,6 +280,7 @@ def _normalize_edit_item(item: Any, ctx: ToolContext) -> dict:
     normalized["new_content"] = content
     normalized["start_line"] = start
     normalized["end_line"] = end
+    normalized["evidence"] = evidence
     return normalized
 
 

@@ -259,21 +259,39 @@ class AgenticRunner:
                 )
                 preview = self._edit_previews.get(edit_item.get("file"))
                 if preview is None:
-                    self.state.add_audit(
-                        "agentic",
-                        f"apply_edit 缺少预览: {edit_item.get('file')}",
+                    preview_result = self.dispatcher.call(
+                        "propose_edit",
+                        item=edit_item,
                     )
-                    history.append(
-                        {
-                            "role": "user",
-                            "content": (
-                                "必须先调用 propose_edit 生成预览，"
-                                "再调用 apply_edit。"
-                            ),
-                        }
-                    )
-                    self.workspace.save_state()
-                    continue
+                    if preview_result.success:
+                        preview = preview_result.result
+                        self._edit_previews[edit_item.get("file")] = preview
+                        history.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "已自动生成预览: "
+                                    f"{json.dumps(preview, ensure_ascii=False)[:500]}"
+                                ),
+                            }
+                        )
+                    else:
+                        self.state.add_audit(
+                            "agentic",
+                            f"apply_edit 自动预览失败: {edit_item.get('file')}",
+                            {"error": preview_result.error},
+                        )
+                        history.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    f"无法自动生成预览: {preview_result.error}，"
+                                    "请先调用 propose_edit 并修正编辑条目。"
+                                ),
+                            }
+                        )
+                        self.workspace.save_state()
+                        continue
 
                 review = self._reviewer(edit_item, preview.get("diff", ""))
                 if not review.get("approved"):

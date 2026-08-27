@@ -380,7 +380,7 @@ class AgenticRunnerTests(unittest.TestCase):
                 any("评审未通过" in entry.message for entry in state.audit_entries)
             )
 
-    def test_agentic_edit_requires_preview_first(self):
+    def test_agentic_edit_auto_generates_preview(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"
             output = Path(tmp) / "out"
@@ -416,9 +416,9 @@ class AgenticRunnerTests(unittest.TestCase):
             )
             state = runner.run()
             self.assertEqual(state.phase.value, "done")
-            self.assertFalse((output / "a.py").exists())
-            self.assertTrue(
-                any("缺少预览" in entry.message for entry in state.audit_entries)
+            self.assertEqual(
+                (output / "a.py").read_text(encoding="utf-8"),
+                "x = 2\n",
             )
 
 
