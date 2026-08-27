@@ -128,7 +128,21 @@ def _apply_patch(ctx: ToolContext, item: Any = None, **kwargs: Any) -> dict[str,
 def _run_verifier(ctx: ToolContext, path: str | None = None, **kwargs: Any) -> dict[str, Any]:
     if not path:
         raise ValueError("run_verifier 需要 path 参数")
-    result = verify_file(path)
+    raw = Path(path)
+    if raw.is_absolute():
+        target = raw
+        try:
+            target.relative_to(ctx.guard.output_root)
+        except ValueError as exc:
+            raise ValueError(
+                "run_verifier 只能验证输出目录内的文件"
+            ) from exc
+    else:
+        target = ctx.guard.resolve_output(path)
+    if not target.is_file():
+        raise ValueError(f"验证目标不是输出文件: {path}")
+
+    result = verify_file(target)
     return {
         "success": result.success,
         "checks": [

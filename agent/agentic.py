@@ -344,6 +344,13 @@ class AgenticRunner:
                     }
                 )
             self.workspace.save_state()
+            if action == "write_report" and result.success:
+                self.state.add_audit(
+                    "agentic",
+                    "报告已生成，Agent 自动结束",
+                )
+                self.workspace.save_state()
+                return
 
         raise RuntimeError(f"Agent 超过最大迭代次数 {MAX_AGENT_ITERATIONS}")
 
@@ -383,7 +390,10 @@ class AgenticRunner:
             f"轮次约束：最多执行 {MAX_AGENT_ITERATIONS} 轮，"
             "完成任务后立即返回 finish；\n"
             "同一文档只读取一次，不要重复读取；\n"
-            "轮次接近上限时会收到提醒，请尽快收尾。"
+            "轮次接近上限时会收到提醒，请尽快收尾；\n"
+            "语义问题（内存泄漏/并发/废弃 API）必须使用 propose_edit 与 "
+            "apply_edit，apply_patch 只用于固定语法规则；\n"
+            "write_report 生成报告后任务即完成，应结束循环。"
         )
 
     def _default_confirm(self, item: dict) -> bool:

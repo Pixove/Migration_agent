@@ -82,6 +82,26 @@ class ToolingTests(unittest.TestCase):
             )
             self.assertEqual(len(ctx.files), 1)
 
+    def test_run_verifier_rejects_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            output.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+
+            config = load_config("config.yaml")
+            guard = PathGuard(source, output)
+            ctx = ToolContext(config=config, guard=guard)
+            dispatcher = ToolDispatcher(
+                ToolRegistry(config.guardrails.allowed_tools)
+            )
+            register_tools(dispatcher, ctx)
+
+            result = dispatcher.call("run_verifier", path=".")
+            self.assertFalse(result.success)
+            self.assertIn("不是输出文件", result.error)
+
 
 if __name__ == "__main__":
     unittest.main()

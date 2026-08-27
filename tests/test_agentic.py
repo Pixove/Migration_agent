@@ -68,6 +68,36 @@ class AgenticRunnerTests(unittest.TestCase):
             with self.assertRaises(LLMError):
                 runner.run()
 
+    def test_agentic_auto_finishes_after_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            decisions = [
+                {
+                    "thought": "生成报告",
+                    "action": "write_report",
+                    "params": {},
+                },
+                {"thought": "不会执行", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue((state.audit_dir() / "report.md").is_file())
+            self.assertTrue(
+                any("自动结束" in entry.message for entry in state.audit_entries)
+            )
+
     def test_system_prompt_uses_index_and_red_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"
