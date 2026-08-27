@@ -104,7 +104,11 @@ def _generate_batch(
 ) -> list[PlanItem]:
     """生成并校验一批文件的迁移计划。"""
     messages = build_plan_messages(files, evidence=evidence)
-    raw = client.complete(messages, max_tokens=PLAN_MAX_TOKENS)
+    raw = client.complete(
+        messages,
+        max_tokens=PLAN_MAX_TOKENS,
+        json_mode=True,
+    )
     try:
         payload = parse_json_object(raw)
     except LLMError as exc:

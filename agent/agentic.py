@@ -160,12 +160,35 @@ class AgenticRunner:
         ]
 
         for iteration in range(MAX_AGENT_ITERATIONS):
-            try:
-                raw = self.llm.complete(history, max_tokens=2048)
-                decision = parse_json_object(raw)
-            except LLMError as exc:
-                self.state.add_audit("agentic", f"模型响应解析失败: {exc}")
-                raise
+            raw = None
+            decision = None
+            for attempt in range(3):
+                try:
+                    raw = self.llm.complete(
+                        history,
+                        max_tokens=4096,
+                        json_mode=True,
+                    )
+                    decision = parse_json_object(raw)
+                    break
+                except LLMError as exc:
+                    if attempt == 2:
+                        self.state.add_audit(
+                            "agentic",
+                            f"模型响应解析失败: {exc}",
+                            {"raw": (raw or "")[:2000]},
+                        )
+                        raise
+                    history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "你的上一次响应不是合法 JSON。请只返回 "
+                                '{"action": "工具名或finish", "params": {}}，'
+                                "不要包含其他内容。"
+                            ),
+                        }
+                    )
 
             action = decision.get("action")
             params = (

@@ -37,7 +37,7 @@ def review_edit(llm: LLMClient, item: dict, diff: str) -> dict:
         },
     ]
     try:
-        raw = llm.complete(messages, max_tokens=1024)
+        raw = llm.complete(messages, max_tokens=1024, json_mode=True)
         data = parse_json_object(raw)
     except LLMError:
         return {"approved": False, "issues": ["评审响应解析失败"]}

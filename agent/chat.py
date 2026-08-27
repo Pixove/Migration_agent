@@ -76,7 +76,7 @@ class ChatSession:
             {"role": "user", "content": answer},
         ]
         try:
-            raw = self.llm.complete(messages, max_tokens=512)
+            raw = self.llm.complete(messages, max_tokens=512, json_mode=True)
             data = parse_json_object(raw)
         except LLMError:
             return _keyword_intent(answer)

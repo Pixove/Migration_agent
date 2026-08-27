@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from agent.agentic import AgenticRunner
 from agent.config import load_config
+from agent.llm import LLMError
 
 
 class FakeAgentLLM:
@@ -21,7 +22,52 @@ class FakeAgentLLM:
         return json.dumps(decision, ensure_ascii=False)
 
 
+class FlakyAgentLLM:
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = 0
+
+    def complete(self, messages, **kwargs):
+        response = self.responses[min(self.calls, len(self.responses) - 1)]
+        self.calls += 1
+        return response
+
+
 class AgenticRunnerTests(unittest.TestCase):
+    def test_agentic_retries_invalid_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            llm = FlakyAgentLLM(
+                [
+                    "not json",
+                    json.dumps(
+                        {
+                            "thought": "完成",
+                            "action": "finish",
+                            "params": {},
+                        }
+                    ),
+                ]
+            )
+            config = load_config("config.yaml")
+            runner = AgenticRunner(config, source, output, llm=llm)
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertEqual(llm.calls, 2)
+
+    def test_agentic_gives_up_after_retries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            llm = FlakyAgentLLM(["bad"] * 3)
+            config = load_config("config.yaml")
+            runner = AgenticRunner(config, source, output, llm=llm)
+            with self.assertRaises(LLMError):
+                runner.run()
+
     def test_system_prompt_uses_index_and_red_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"

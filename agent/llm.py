@@ -27,12 +27,31 @@ class LLMClient(ABC):
         """检查服务是否可用，不发送完整对话。"""
 
     @abstractmethod
-    def complete(self, messages: list[dict[str, str]], *, temperature: float | None = None, max_tokens: int | None = None) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        json_mode: bool = False,
+    ) -> str:
         """发送对话并返回文本结果。"""
 
-    def complete_json(self, messages: list[dict[str, str]], *, temperature: float | None = None, max_tokens: int | None = None) -> dict[str, Any]:
+    def complete_json(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        json_mode: bool = True,
+    ) -> dict[str, Any]:
         """发送对话并要求模型返回 JSON，解析失败时抛 LLMError。"""
-        raw = self.complete(messages, temperature=temperature, max_tokens=max_tokens)
+        raw = self.complete(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            json_mode=json_mode,
+        )
         return parse_json_object(raw)
 
     def _timeout(self) -> int:
@@ -67,13 +86,22 @@ class OpenAICompatibleClient(LLMClient):
         except requests.RequestException:
             return False
 
-    def complete(self, messages: list[dict[str, str]], *, temperature: float | None = None, max_tokens: int | None = None) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        json_mode: bool = False,
+    ) -> str:
         payload = {
             "model": self.model,
             "messages": messages,
             "temperature": self.config.temperature if temperature is None else temperature,
             "max_tokens": self.config.max_tokens if max_tokens is None else max_tokens,
         }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
         try:
             response = requests.post(
                 f"{self.base_url}/chat/completions",
@@ -111,7 +139,14 @@ class OllamaClient(LLMClient):
         except requests.RequestException:
             return False
 
-    def complete(self, messages: list[dict[str, str]], *, temperature: float | None = None, max_tokens: int | None = None) -> str:
+    def complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        json_mode: bool = False,
+    ) -> str:
         payload = {
             "model": self.model,
             "messages": messages,
@@ -121,6 +156,8 @@ class OllamaClient(LLMClient):
                 "num_predict": self.config.max_tokens if max_tokens is None else max_tokens,
             },
         }
+        if json_mode:
+            payload["format"] = "json"
         try:
             response = requests.post(
                 f"{self.base_url}/api/chat",
