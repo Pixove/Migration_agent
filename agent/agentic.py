@@ -25,7 +25,7 @@ from retrieval.knowledge_base import KnowledgeBase
 from tools.patcher import apply_plan_item
 from tools.reporter import write_report as generate_report
 
-MAX_AGENT_ITERATIONS = 20
+DEFAULT_MAX_AGENT_ITERATIONS = 20
 MAX_HISTORY_MESSAGES = 24
 
 READ_ONLY_ACTIONS = ("read_document", "read_source", "retrieve_examples")
@@ -189,8 +189,16 @@ class AgenticRunner:
         ]
 
         consecutive_read_only = 0
-        for iteration in range(MAX_AGENT_ITERATIONS):
-            remaining = MAX_AGENT_ITERATIONS - iteration
+        iteration = 0
+        while True:
+            iteration_limit = max(
+                self.config.workspace.max_agent_iterations,
+                len(self.ctx.files) * 3,
+            )
+            if iteration >= iteration_limit:
+                break
+            remaining = iteration_limit - iteration
+            iteration += 1
             if remaining <= 3:
                 history.append(
                     {
@@ -240,14 +248,31 @@ class AgenticRunner:
                 if isinstance(decision.get("params"), dict)
                 else {}
             )
-            if action == "finish":
-                self.state.add_audit(
-                    "agentic",
-                    f"Agent 自主结束，共 {iteration + 1} 轮",
-                )
-                return
-
-            if action == "write_report":
+            if action in ("finish", "write_report"):
+                pending = self._collect_expected_unresolved_signals()
+                if pending:
+                    self.state.add_audit(
+                        "agentic",
+                        f"仍有 {len(pending)} 个信号未修复，不允许结束",
+                    )
+                    history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "当前仍有未修复信号："
+                                f"{json.dumps(pending, ensure_ascii=False)}。"
+                                "请继续调用 propose_edit/apply_edit 修复后再结束。"
+                            ),
+                        }
+                    )
+                    self.workspace.save_state()
+                    continue
+                if action == "finish":
+                    self.state.add_audit(
+                        "agentic",
+                        f"Agent 自主结束，共 {iteration} 轮",
+                    )
+                    return
                 self.state.add_audit(
                     "agentic",
                     "报告由系统在收尾统一生成，Agent 提前结束",
@@ -539,7 +564,7 @@ class AgenticRunner:
 
         self.state.add_audit(
             "agentic",
-            f"达到最大迭代次数 {MAX_AGENT_ITERATIONS}，强制收尾",
+            f"达到最大迭代次数 {iteration_limit}，强制收尾",
         )
         self.workspace.save_state()
 
@@ -630,6 +655,27 @@ class AgenticRunner:
                 encoding="utf-8-sig",
                 errors="ignore",
             )
+            signals.extend(scan_python_signals(text, file.relative_path))
+        return signals
+
+    def _collect_expected_unresolved_signals(self) -> list[dict]:
+        """估算收尾后仍会存在的信号：已写文件扫输出，未写文件扫源文件。"""
+        signals: list[dict] = []
+        for file in self.ctx.files:
+            if not file.relative_path.endswith(".py"):
+                continue
+            output_path = self.guard.resolve_output(file.relative_path)
+            if output_path.is_file():
+                text = output_path.read_text(
+                    encoding="utf-8-sig",
+                    errors="ignore",
+                )
+            else:
+                source_path = self.guard.resolve_source(file.relative_path)
+                text = source_path.read_text(
+                    encoding="utf-8-sig",
+                    errors="ignore",
+                )
             signals.extend(scan_python_signals(text, file.relative_path))
         return signals
 
@@ -761,6 +807,10 @@ class AgenticRunner:
         index = build_document_index()
         red_lines = build_red_lines()
         tools = json.dumps(TOOL_DESCRIPTIONS, ensure_ascii=False)
+        iteration_cap = max(
+            self.config.workspace.max_agent_iterations,
+            DEFAULT_MAX_AGENT_ITERATIONS,
+        )
         return (
             "你是企业级代码库迁移 Agent。当前任务：\n"
             f"迁移档案: {self.profile.name}（{self.config.migration.scope}）\n"
@@ -775,7 +825,7 @@ class AgenticRunner:
             f"{red_lines}\n"
             "需要规则或技能细节时，调用 read_document(path) 按需读取，"
             "不要一次性读取全部文档。\n"
-            f"轮次约束：最多执行 {MAX_AGENT_ITERATIONS} 轮，"
+            f"轮次约束：最多执行 {iteration_cap} 轮（按文件数动态放大），"
             "完成任务后立即返回 finish；\n"
             "同一文档只读取一次，不要重复读取；\n"
             "轮次接近上限时会收到提醒，请尽快收尾；\n"

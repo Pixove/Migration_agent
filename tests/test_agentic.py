@@ -506,6 +506,58 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertEqual(state.phase.value, "done")
             self.assertEqual(runner.dispatcher.call_counts()["read_document"], 1)
 
+    def test_agentic_cannot_finish_with_unresolved_signals(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            item = {
+                "file": "a.py",
+                "new_content": (
+                    "class A:\n"
+                    "    def close(self):\n"
+                    "        pass\n"
+                ),
+                "evidence": {"doc_id": "d1"},
+                "impact": "low",
+            }
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}},
+                {"thought": "结束", "action": "finish", "params": {}},
+                {
+                    "thought": "修复",
+                    "action": "apply_edit",
+                    "params": {"item": item},
+                },
+                {"thought": "结束", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertEqual(
+                (output / "a.py").read_text(encoding="utf-8"),
+                "class A:\n    def close(self):\n        pass\n",
+            )
+            self.assertEqual(state.unresolved_signals, [])
+
     def test_agentic_max_iterations_force_finishes(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"

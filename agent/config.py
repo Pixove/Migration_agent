@@ -32,6 +32,7 @@ class WorkspaceConfig:
     max_plan_items: int = 50
     max_retries_per_item: int = 3
     max_total_patches: int = 200
+    max_agent_iterations: int = 40
 
 
 @dataclass
@@ -149,6 +150,7 @@ def _build_workspace_config(section: dict[str, Any]) -> WorkspaceConfig:
         max_plan_items=int(_get(section, "max_plan_items", 50)),
         max_retries_per_item=int(_get(section, "max_retries_per_item", 3)),
         max_total_patches=int(_get(section, "max_total_patches", 200)),
+        max_agent_iterations=int(_get(section, "max_agent_iterations", 40)),
     )
 
 

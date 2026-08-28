@@ -42,6 +42,8 @@ workspace:
   max_retries_per_item: 3
   # 单次任务最大应用补丁总数
   max_total_patches: 200
+  # Agentic 模式最大迭代轮次（按文件数动态放大）
+  max_agent_iterations: 40
 
 retrieval:
   # 知识库目录，保存已导入文档的清单与内容缓存
