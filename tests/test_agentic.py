@@ -257,7 +257,7 @@ class AgenticRunnerTests(unittest.TestCase):
             with self.assertRaises(LLMError):
                 runner.run()
 
-    def test_agentic_read_only_loop_auto_finishes(self):
+    def test_agentic_execute_phase_blocks_reads(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"
             output = Path(tmp) / "out"
@@ -289,11 +289,12 @@ class AgenticRunnerTests(unittest.TestCase):
                     "action": "read_source",
                     "params": {"path": "a.py"},
                 }
-                for _ in range(5)
+                for _ in range(3)
             ]
             config = load_config("config.yaml")
             config.retrieval.vector_enabled = False
             config.retrieval.rerank_enabled = False
+            config.workspace.max_agent_iterations = 2
             runner = AgenticRunner(
                 config,
                 source,
@@ -304,7 +305,10 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertEqual(state.phase.value, "done")
             self.assertTrue((output / "a.py").is_file())
             self.assertTrue(
-                any("连续只读" in entry.message for entry in state.audit_entries)
+                any(
+                    "执行阶段禁止读取/检索" in entry.message
+                    for entry in state.audit_entries
+                )
             )
 
     def test_agentic_read_phase_not_cut_off(self):
@@ -915,6 +919,68 @@ class AgenticRunnerTests(unittest.TestCase):
                     for message in history
                 )
             )
+
+    def test_agentic_execute_phase_injects_batches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            for name in ("a.py", "b.py", "c.py", "d.py"):
+                (source / name).write_text(
+                    "class A:\n"
+                    "    def __del__(self):\n"
+                    "        pass\n",
+                    encoding="utf-8",
+                )
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}}
+            ]
+            for name in ("a.py", "b.py", "c.py", "d.py"):
+                decisions.append(
+                    {
+                        "thought": "编辑",
+                        "action": "apply_edit",
+                        "params": {
+                            "item": {
+                                "file": name,
+                                "new_content": (
+                                    "class A:\n"
+                                    "    def close(self):\n"
+                                    "        pass\n"
+                                ),
+                                "evidence": {"kind": "destructor"},
+                                "impact": "low",
+                            }
+                        },
+                    }
+                )
+            decisions.append(
+                {"thought": "完成", "action": "finish", "params": {}}
+            )
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            config.workspace.max_agent_iterations = 2
+            llm = RecordingAgentLLM(decisions)
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=llm,
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertEqual(state.unresolved_signals, [])
+            injected = [
+                entry.message
+                for entry in state.audit_entries
+                if entry.message.startswith("注入批量文件")
+            ]
+            self.assertEqual(len(injected), 2)
 
     def test_agentic_directed_repair_skips_review_for_low_impact(self):
         with tempfile.TemporaryDirectory() as tmp:

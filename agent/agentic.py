@@ -30,6 +30,12 @@ MAX_HISTORY_MESSAGES = 24
 DIRECTED_REPAIR_ATTEMPTS_PER_SIGNAL = 2
 MAX_DIRECTED_REPAIR_TURNS = 20
 MAX_READ_PHASE_ITERATIONS = 8
+BATCH_FILE_LIMIT = 3
+EXECUTE_PHASE_BLOCKED_ACTIONS = (
+    "read_source",
+    "read_document",
+    "retrieve_examples",
+)
 
 READ_ONLY_ACTIONS = ("read_document", "read_source", "retrieve_examples")
 EXECUTE_ACTIONS = (
@@ -134,6 +140,7 @@ class AgenticRunner:
         self._edit_previews: dict[str, dict] = {}
         self._read_docs: set[str] = set()
         self._read_attempts: set[str] = set()
+        self._batched_files: set[str] = set()
         self._reviewer = reviewer or (
             lambda item, diff: review_edit(self.llm, item, diff)
         )
@@ -300,6 +307,26 @@ class AgenticRunner:
             read_only = action in READ_ONLY_ACTIONS
             if self._phase == "read" and action in EXECUTE_ACTIONS:
                 self._enter_execute_phase(history)
+            if (
+                self._phase == "execute"
+                and action in EXECUTE_PHASE_BLOCKED_ACTIONS
+            ):
+                self.state.add_audit(
+                    "agentic",
+                    f"执行阶段禁止读取/检索，已跳过: {action}",
+                )
+                history.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "执行阶段由 harness 分批提供待修文件源码与信号，"
+                            "禁止再调用 read_source/read_document/retrieve_examples，"
+                            "请直接 propose_edit/apply_edit。"
+                        ),
+                    }
+                )
+                self.workspace.save_state()
+                continue
             consecutive_read_only = (
                 consecutive_read_only + 1 if read_only else 0
             )
@@ -519,6 +546,7 @@ class AgenticRunner:
                     )
                     if verified:
                         self._record_applied_item(action, params, result.result)
+                        self._maybe_advance_batch(history)
                         if (
                             not self._collect_expected_unresolved_signals()
                             and self._all_scanned_files_written()
@@ -1027,26 +1055,65 @@ class AgenticRunner:
             )
 
     def _enter_execute_phase(self, history: list[dict]) -> None:
-        """进入执行阶段并注入信号清单与参考源码。"""
+        """进入执行阶段，按批次注入信号清单与参考源码。"""
         self._phase = "execute"
         self.state.add_audit("agentic", "进入执行阶段")
-        signals = self._collect_signals_for_files()
-        if signals:
-            history.append(
-                {
-                    "role": "user",
-                    "content": self._execute_context_message(signals),
-                }
-            )
+        self._inject_next_batch(history)
 
-    def _execute_context_message(self, signals: list[dict]) -> str:
-        """构造执行阶段提示：信号清单 + 涉及文件的参考源码。"""
+    def _inject_next_batch(self, history: list[dict]) -> bool:
+        """注入下一批待修文件：信号清单 + 文件全文，返回是否注入。"""
+        remaining = self._collect_expected_unresolved_signals()
+        if not remaining:
+            return False
+        pending_files = sorted({signal["file"] for signal in remaining})
+        next_files = [
+            file for file in pending_files if file not in self._batched_files
+        ][:BATCH_FILE_LIMIT]
+        if not next_files:
+            return False
+        self._batched_files.update(next_files)
+        signals = [
+            signal for signal in remaining if signal["file"] in next_files
+        ]
+        history.append(
+            {
+                "role": "user",
+                "content": self._execute_context_message(signals, next_files),
+            }
+        )
+        self.state.add_audit(
+            "agentic",
+            f"注入批量文件: {', '.join(next_files)}",
+        )
+        return True
+
+    def _maybe_advance_batch(self, history: list[dict]) -> None:
+        """当前批次信号全部清除后，注入下一批文件。"""
+        if self._phase != "execute":
+            return
+        remaining = self._collect_expected_unresolved_signals()
+        if not remaining:
+            return
+        active_files = {
+            signal["file"]
+            for signal in remaining
+            if signal["file"] in self._batched_files
+        }
+        if not active_files:
+            self._inject_next_batch(history)
+
+    def _execute_context_message(
+        self,
+        signals: list[dict],
+        files: list[str],
+    ) -> str:
+        """构造本批提示：信号清单 + 涉及文件的参考源码。"""
         parts = [
-            "迁移信号清单（必须逐一处理，resolve 或给出理由，不允许漏过）：\n"
+            "迁移信号清单（本批，必须逐一处理，resolve 或给出理由，不允许漏过）：\n"
             + json.dumps(signals, ensure_ascii=False)
         ]
         file_contents = []
-        for file in sorted({signal["file"] for signal in signals}):
+        for file in files:
             text = self._signal_source_text({"file": file, "line": 1})
             if text:
                 file_contents.append(f"[{file}]\n{text}")
@@ -1055,6 +1122,9 @@ class AgenticRunner:
                 "参考源码（已注入，无需重复 read_source）：\n"
                 + "\n\n".join(file_contents)
             )
+        parts.append(
+            f"本批共 {len(files)} 个文件，处理完成后 harness 会注入下一批。"
+        )
         return "\n\n".join(parts)
 
     def _matching_signal(self, item: dict) -> dict | None:
@@ -1278,8 +1348,9 @@ class AgenticRunner:
             "write_report 生成报告后任务即完成，应结束循环；\n"
             "先读取必要文档与源码，读取阶段不会被打断；"
             "开始执行（propose_plan/编辑/应用/验证）后进入执行阶段；\n"
-            "进入执行阶段后 harness 会提供迁移信号清单，"
-            "必须逐一 resolve 或给出理由；\n"
+            "进入执行阶段后 harness 会分批提供待修文件源码与迁移信号，"
+            "禁止再调用 read_source/read_document/retrieve_examples；\n"
+            "必须逐一 resolve 本批信号或给出理由；\n"
             "编辑必须移除信号对应的旧写法，不能只叠加新写法；"
             "编辑后 harness 会复验信号是否消除。"
         )
