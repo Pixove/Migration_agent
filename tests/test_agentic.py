@@ -1049,7 +1049,8 @@ class AgenticRunnerTests(unittest.TestCase):
                     "        pass\n"
                 ),
                 "evidence": (
-                    "信号: __del__ 清理资源不可靠，建议改为上下文管理器"
+                    "知识库提到 __del__ 清理资源不可靠，"
+                    "建议以上下文管理器替代"
                 ),
                 "impact": "low",
             }
@@ -1079,6 +1080,77 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertEqual(state.phase.value, "done")
             self.assertEqual(state.unresolved_signals, [])
             self.assertEqual(reviews, [])
+
+    def test_agentic_rejects_copy_over_existing_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            (source / "b.py").write_text("x = 1\n", encoding="utf-8")
+            item = {
+                "file": "a.py",
+                "new_content": (
+                    "class A:\n"
+                    "    def close(self):\n"
+                    "        pass\n"
+                ),
+                "evidence": {"kind": "destructor"},
+                "impact": "low",
+            }
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}},
+                {
+                    "thought": "编辑",
+                    "action": "apply_edit",
+                    "params": {"item": item},
+                },
+                {
+                    "thought": "复制",
+                    "action": "apply_patch",
+                    "params": {
+                        "item": {
+                            "id": "p1",
+                            "file": "a.py",
+                            "issue": "x",
+                            "action": "copy",
+                            "impact": "low",
+                        }
+                    },
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            config.workspace.max_agent_iterations = 2
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue(
+                any(
+                    "拒绝 copy 覆盖已写入文件" in entry.message
+                    for entry in state.audit_entries
+                )
+            )
+            self.assertNotIn(
+                "__del__",
+                (output / "a.py").read_text(encoding="utf-8"),
+            )
 
     def test_agentic_execute_phase_blocks_scan_and_dir_verifier(self):
         with tempfile.TemporaryDirectory() as tmp:

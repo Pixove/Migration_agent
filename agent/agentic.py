@@ -408,6 +408,28 @@ class AgenticRunner:
                     if isinstance(params.get("item"), dict)
                     else {}
                 )
+                patch_file = patch_item.get("file")
+                if (
+                    patch_item.get("action") == "copy"
+                    and patch_file
+                    and self.guard.resolve_output(patch_file).is_file()
+                ):
+                    self.state.add_audit(
+                        "agentic",
+                        f"拒绝 copy 覆盖已写入文件: {patch_file}",
+                    )
+                    history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"文件 {patch_file} 已写入输出目录，"
+                                "禁止用 copy 覆盖；未处理文件由 harness 收尾补齐，"
+                                "有信号请使用 apply_edit。"
+                            ),
+                        }
+                    )
+                    self.workspace.save_state()
+                    continue
                 impact = patch_item.get("impact")
                 if (
                     impact in self.config.guardrails.require_approval_impact
@@ -1154,22 +1176,47 @@ class AgenticRunner:
         )
         return "\n\n".join(parts)
 
-    def _matching_signal(self, item: dict) -> dict | None:
-        """根据编辑证据找到当前文件中的关联信号（类型或消息命中）。"""
-        file = item.get("file")
-        evidence = item.get("evidence")
+    @staticmethod
+    def _signal_keywords(signal: dict) -> list[str]:
+        kind = str(signal.get("kind", ""))
+        if kind == "destructor":
+            return ["__del__", "destructor", "析构", "上下文管理器"]
+        if kind == "deprecated_time":
+            return ["utcnow", "utcfromtimestamp", "datetime", "timezone"]
+        if kind == "removed_module":
+            return ["distutils", "imp", "模块已移除"]
+        return []
+
+    @staticmethod
+    def _evidence_matches_signal(evidence: Any, signal: dict) -> bool:
+        """判断编辑证据是否关联信号：类型、消息或关键词命中。"""
         if isinstance(evidence, str):
             marker = evidence
         elif isinstance(evidence, dict):
             marker = json.dumps(evidence, ensure_ascii=False)
         else:
+            return False
+        kind = str(signal.get("kind", ""))
+        message = str(signal.get("message", ""))
+        if kind and kind in marker:
+            return True
+        if message and message in marker:
+            return True
+        return any(
+            keyword and keyword in marker
+            for keyword in AgenticRunner._signal_keywords(signal)
+        )
+
+    def _matching_signal(self, item: dict) -> dict | None:
+        """根据编辑证据找到当前文件中的关联信号（类型/消息/关键词命中）。"""
+        file = item.get("file")
+        evidence = item.get("evidence")
+        if not (isinstance(evidence, str) or isinstance(evidence, dict)):
             return None
         for signal in self._collect_expected_unresolved_signals():
             if signal.get("file") != file:
                 continue
-            kind = str(signal.get("kind", ""))
-            message = str(signal.get("message", ""))
-            if (kind and kind in marker) or (message and message in marker):
+            if self._evidence_matches_signal(evidence, signal):
                 return signal
         return None
 
@@ -1179,16 +1226,7 @@ class AgenticRunner:
             return False
         if item.get("impact") in self.config.guardrails.require_approval_impact:
             return False
-        evidence = item.get("evidence")
-        if isinstance(evidence, str) and evidence.strip():
-            evidence = {"note": evidence}
-        if not isinstance(evidence, dict) or not evidence:
-            return False
-        marker = json.dumps(evidence, ensure_ascii=False)
-        return (
-            str(signal.get("kind", "")) in marker
-            or str(signal.get("message", "")) in marker
-        )
+        return self._evidence_matches_signal(item.get("evidence"), signal)
 
     def _collect_signals_for_files(self) -> list[dict]:
         """扫描输入项目文件，汇总当前迁移信号。"""
@@ -1377,8 +1415,10 @@ class AgenticRunner:
             "完成任务后立即返回 finish；\n"
             "同一文档只读取一次，不要重复读取；\n"
             "轮次接近上限时会收到提醒，请尽快收尾；\n"
-            "语义问题（内存泄漏/并发/废弃 API）必须使用 propose_edit 与 "
-            "apply_edit，apply_patch 只用于固定语法规则；\n"
+            "语义问题（内存泄漏/并发/废弃 API）直接调用 apply_edit，"
+            "harness 会自动生成 diff 预览并评审，不要先调用 propose_edit；\n"
+            "apply_patch 只用于固定语法规则，禁止 copy 覆盖已写入文件；"
+            "未处理文件由 harness 在收尾补齐，不要手动复制；\n"
             "write_report 生成报告后任务即完成，应结束循环；\n"
             "先读取必要文档与源码，读取阶段不会被打断；"
             "开始执行（propose_plan/编辑/应用/验证）后进入执行阶段；\n"
