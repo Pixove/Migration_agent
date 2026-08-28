@@ -5,7 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from agent.config import AppConfig
+from agent.config import VALID_IMPACT_LEVELS, AppConfig
 from agent.context_loader import build_document_index, build_red_lines
 from agent.dispatcher import ToolDispatcher
 from agent.guardrails import Budget, GuardrailError, build_guardrails
@@ -27,6 +27,8 @@ from tools.reporter import write_report as generate_report
 
 DEFAULT_MAX_AGENT_ITERATIONS = 20
 MAX_HISTORY_MESSAGES = 24
+DIRECTED_REPAIR_ATTEMPTS_PER_SIGNAL = 2
+MAX_DIRECTED_REPAIR_TURNS = 20
 
 READ_ONLY_ACTIONS = ("read_document", "read_source", "retrieve_examples")
 EXECUTE_ACTIONS = (
@@ -151,6 +153,7 @@ class AgenticRunner:
         try:
             self._initialize()
             self._agent_loop()
+            self._directed_repair_pass()
             self._finish()
         except Exception as exc:
             try:
@@ -567,6 +570,269 @@ class AgenticRunner:
             f"达到最大迭代次数 {iteration_limit}，强制收尾",
         )
         self.workspace.save_state()
+
+    def _directed_repair_pass(self) -> None:
+        """主循环结束后，对未解析信号逐个定向修复，独立轮次预算。"""
+        pending = self._sort_signals(
+            self._collect_expected_unresolved_signals()
+        )
+        if not pending:
+            return
+        self.state.add_audit(
+            "agentic",
+            f"定向修复开始，待处理信号 {len(pending)} 个",
+            {"signals": pending},
+        )
+        attempts_left = {
+            self._signal_key(signal): DIRECTED_REPAIR_ATTEMPTS_PER_SIGNAL
+            for signal in pending
+        }
+        max_turns = max(
+            3,
+            min(
+                len(pending) * DIRECTED_REPAIR_ATTEMPTS_PER_SIGNAL,
+                MAX_DIRECTED_REPAIR_TURNS,
+            ),
+        )
+        for _ in range(max_turns):
+            if not pending:
+                break
+            signal = pending[0]
+            key = self._signal_key(signal)
+            attempts_left[key] -= 1
+            pending_files = {item["file"] for item in pending}
+            self._repair_signal(signal, pending_files, attempts_left[key])
+            self.workspace.save_state()
+
+            fresh = self._sort_signals(
+                self._collect_expected_unresolved_signals()
+            )
+            fresh_keys = {self._signal_key(item) for item in fresh}
+            attempts_left = {
+                item_key: attempts_left.get(
+                    item_key,
+                    DIRECTED_REPAIR_ATTEMPTS_PER_SIGNAL,
+                )
+                for item_key in fresh_keys
+            }
+            pending = fresh
+            if key in fresh_keys and attempts_left[key] <= 0:
+                self.state.add_audit(
+                    "agentic",
+                    f"定向修复失败，放弃信号: "
+                    f"{json.dumps(signal, ensure_ascii=False)}",
+                )
+                pending = [
+                    item for item in pending if self._signal_key(item) != key
+                ]
+        if pending:
+            self.state.add_audit(
+                "agentic",
+                f"定向修复结束，仍有 {len(pending)} 个信号未修复",
+                {"signals": pending},
+            )
+        else:
+            self.state.add_audit("agentic", "定向修复结束，信号已全部消除")
+        self.workspace.save_state()
+
+    @staticmethod
+    def _signal_key(signal: dict) -> tuple[str, int, str]:
+        return (
+            str(signal.get("file", "")),
+            int(signal.get("line") or 0),
+            str(signal.get("kind", "")),
+        )
+
+    @staticmethod
+    def _sort_signals(signals: list[dict]) -> list[dict]:
+        return sorted(
+            signals,
+            key=lambda signal: (
+                str(signal.get("file", "")),
+                int(signal.get("line") or 0),
+                str(signal.get("kind", "")),
+            ),
+        )
+
+    def _repair_signal(
+        self,
+        signal: dict,
+        pending_files: set[str],
+        attempts_left: int,
+    ) -> bool:
+        """针对单个信号生成定向编辑并应用，返回是否成功落地。"""
+        snippet = self._signal_source_snippet(signal)
+        if snippet is None:
+            self.state.add_audit(
+                "agentic",
+                f"定向修复无法读取源码: {signal.get('file')}",
+            )
+            return False
+        prompt = (
+            "你现在必须定向修复一个遗留迁移信号。\n"
+            "要求：\n"
+            "1. 只能修改待修复文件之一，不得引入无关改动；\n"
+            "2. 必须移除信号对应的旧写法，不能只叠加新写法；\n"
+            "3. 返回 JSON：{\"item\": {编辑条目}}，不要返回其他内容。\n"
+            "编辑条目字段：file, start_line, end_line, new_content, "
+            "evidence（对象）, impact（low/medium/high，默认 low）；\n"
+            "new_content 是修改后的完整代码片段，缺省行范围时视为整文件替换。\n"
+            f"待修复文件: {json.dumps(sorted(pending_files), ensure_ascii=False)}\n"
+            f"本次信号: {json.dumps(signal, ensure_ascii=False)}\n"
+            f"当前代码片段:\n{snippet}\n"
+        )
+        item = None
+        for _ in range(2):
+            try:
+                raw = self.llm.complete(
+                    [
+                        {"role": "system", "content": self._system_prompt()},
+                        {"role": "user", "content": prompt},
+                    ],
+                    max_tokens=2048,
+                    json_mode=True,
+                )
+                data = parse_json_object(raw)
+            except LLMError as exc:
+                self.state.add_audit(
+                    "agentic",
+                    f"定向修复响应解析失败: {signal.get('file')}: {exc}",
+                )
+                continue
+            candidate = None
+            if isinstance(data, dict):
+                candidate = data.get("item")
+                if not isinstance(candidate, dict):
+                    params = data.get("params")
+                    if isinstance(params, dict):
+                        candidate = params.get("item")
+            if isinstance(candidate, dict):
+                item = candidate
+                break
+            self.state.add_audit(
+                "agentic",
+                f"定向修复响应缺少 item: {signal.get('file')}",
+                {"raw": (raw or "")[:500]},
+            )
+        if item is None:
+            return False
+        return self._apply_directed_edit(item, pending_files, signal, attempts_left)
+
+    def _signal_source_snippet(self, signal: dict) -> str | None:
+        """读取信号所在文件（优先输出副本）并返回信号行附近的代码。"""
+        file = signal.get("file", "")
+        line = int(signal.get("line") or 1)
+        output_path = self.guard.resolve_output(file)
+        if output_path.is_file():
+            text = output_path.read_text(
+                encoding="utf-8-sig",
+                errors="ignore",
+            )
+        else:
+            source_path = self.guard.resolve_source(file)
+            if not source_path.is_file():
+                return None
+            text = source_path.read_text(
+                encoding="utf-8-sig",
+                errors="ignore",
+            )
+        lines = text.splitlines()
+        start = max(1, line - 5)
+        end = min(len(lines), line + 5)
+        return "\n".join(
+            f"{idx}: {lines[idx - 1]}" for idx in range(start, end + 1)
+        )
+
+    def _apply_directed_edit(
+        self,
+        item: dict,
+        pending_files: set[str],
+        signal: dict,
+        attempts_left: int,
+    ) -> bool:
+        """走与主循环一致的编辑管线：预览、评审、审批、应用、验证。"""
+        file = item.get("file", "")
+        if file not in pending_files:
+            self.state.add_audit(
+                "agentic",
+                f"定向编辑目标不在待修复清单内，拒绝: {file}",
+            )
+            return False
+
+        normalized = dict(item)
+        if (
+            not isinstance(normalized.get("evidence"), dict)
+            or not normalized.get("evidence")
+        ):
+            normalized["evidence"] = {
+                "kind": signal.get("kind"),
+                "line": signal.get("line"),
+                "message": signal.get("message"),
+            }
+        if normalized.get("impact") not in VALID_IMPACT_LEVELS:
+            normalized["impact"] = "low"
+
+        preview_result = self.dispatcher.call("propose_edit", item=normalized)
+        if not preview_result.success:
+            self.state.add_audit(
+                "agentic",
+                f"定向修复预览失败: {file}: {preview_result.error}",
+            )
+            return False
+        preview = preview_result.result
+        if not isinstance(preview, dict):
+            self.state.add_audit("agentic", f"定向修复预览格式异常: {file}")
+            return False
+
+        review = self._reviewer(normalized, preview.get("diff", ""))
+        if not review.get("approved"):
+            if review.get("unavailable"):
+                self.state.add_audit(
+                    "agentic",
+                    f"定向修复评审不可用，记录风险后放行: {file}",
+                    {"issues": review.get("issues", [])},
+                )
+            else:
+                self.state.add_audit(
+                    "agentic",
+                    f"定向修复评审未通过: {file}",
+                    {"issues": review.get("issues", [])},
+                )
+                return False
+
+        impact = normalized.get("impact")
+        if (
+            impact in self.config.guardrails.require_approval_impact
+            and not self.auto_approve
+            and not self._approve_all_remaining
+            and not self._default_confirm(normalized)
+        ):
+            self.state.add_audit(
+                "agentic",
+                f"用户拒绝定向修复: {file}",
+            )
+            return False
+
+        result = self.dispatcher.call("apply_edit", item=normalized)
+        self.state.add_audit(
+            "agentic",
+            f"定向修复调用 apply_edit: {file}",
+            {
+                "success": result.success,
+                "error": result.error,
+            },
+        )
+        if not result.success:
+            return False
+        if self._auto_verify_apply("apply_edit", {"item": normalized}, result.result):
+            self._record_applied_item("apply_edit", {"item": normalized}, result.result)
+            self.state.add_audit(
+                "agentic",
+                f"定向修复已应用: {file}（剩余尝试 {attempts_left} 次）",
+            )
+            return True
+        self._record_failed_item("apply_edit", {"item": normalized}, result.result)
+        return False
 
     def _finish(self) -> None:
         self.state.transition(Phase.RETRIEVE)

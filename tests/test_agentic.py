@@ -81,6 +81,48 @@ class RecordingAgentLLM:
         return json.dumps(decision, ensure_ascii=False)
 
 
+class DirectedRepairLLM:
+    def __init__(self, main_decisions, directed_items):
+        self.main_decisions = list(main_decisions)
+        self.directed_items = list(directed_items)
+        self.main_index = 0
+        self.directed_index = 0
+
+    def complete(self, messages, **kwargs):
+        system = messages[0]["content"] if messages else ""
+        if "迁移规划器" in system:
+            payload = json.loads(messages[1]["content"])
+            items = [
+                {
+                    "file": name,
+                    "issue": "x",
+                    "action": "copy",
+                    "impact": "low",
+                }
+                for name in payload.get("files", [])
+            ]
+            return json.dumps({"items": items}, ensure_ascii=False)
+        last_user = next(
+            (
+                message["content"]
+                for message in reversed(messages)
+                if message["role"] == "user"
+            ),
+            "",
+        )
+        if "定向修复" in last_user:
+            item = self.directed_items[
+                min(self.directed_index, len(self.directed_items) - 1)
+            ]
+            self.directed_index += 1
+            return json.dumps({"item": item}, ensure_ascii=False)
+        decision = self.main_decisions[
+            min(self.main_index, len(self.main_decisions) - 1)
+        ]
+        self.main_index += 1
+        return json.dumps(decision, ensure_ascii=False)
+
+
 class AgenticRunnerTests(unittest.TestCase):
     def test_agentic_retries_invalid_json(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -557,6 +599,79 @@ class AgenticRunnerTests(unittest.TestCase):
                 "class A:\n    def close(self):\n        pass\n",
             )
             self.assertEqual(state.unresolved_signals, [])
+
+    def test_agentic_directed_repair_fixes_signals_out_of_order(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            (source / "b.py").write_text(
+                "import datetime\n"
+                "now = datetime.datetime.utcnow()\n",
+                encoding="utf-8",
+            )
+            directed_items = [
+                {
+                    "file": "b.py",
+                    "new_content": (
+                        "import datetime\n"
+                        "now = datetime.datetime.now(datetime.timezone.utc)\n"
+                    ),
+                    "evidence": {"kind": "deprecated_time"},
+                    "impact": "low",
+                },
+                {
+                    "file": "a.py",
+                    "new_content": (
+                        "class A:\n"
+                        "    def close(self):\n"
+                        "        pass\n"
+                    ),
+                    "evidence": {"kind": "destructor"},
+                    "impact": "low",
+                },
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            config.workspace.max_agent_iterations = 2
+            llm = DirectedRepairLLM(
+                main_decisions=[
+                    {"thought": "扫描", "action": "scan_files", "params": {}},
+                    {"thought": "完成", "action": "finish", "params": {}},
+                ],
+                directed_items=directed_items,
+            )
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=llm,
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertEqual(state.unresolved_signals, [])
+            self.assertNotIn(
+                "__del__",
+                (output / "a.py").read_text(encoding="utf-8"),
+            )
+            self.assertNotIn(
+                "utcnow",
+                (output / "b.py").read_text(encoding="utf-8"),
+            )
+            self.assertTrue(
+                any("定向修复" in entry.message for entry in state.audit_entries)
+            )
 
     def test_agentic_max_iterations_force_finishes(self):
         with tempfile.TemporaryDirectory() as tmp:
