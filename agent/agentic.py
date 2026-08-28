@@ -35,6 +35,7 @@ EXECUTE_PHASE_BLOCKED_ACTIONS = (
     "read_source",
     "read_document",
     "retrieve_examples",
+    "scan_files",
 )
 
 READ_ONLY_ACTIONS = ("read_document", "read_source", "retrieve_examples")
@@ -320,13 +321,39 @@ class AgenticRunner:
                         "role": "user",
                         "content": (
                             "执行阶段由 harness 分批提供待修文件源码与信号，"
-                            "禁止再调用 read_source/read_document/retrieve_examples，"
-                            "请直接 propose_edit/apply_edit。"
+                            "禁止再调用 read_source/read_document/retrieve_examples/"
+                            "scan_files，请直接 propose_edit/apply_edit。"
                         ),
                     }
                 )
                 self.workspace.save_state()
                 continue
+            if action == "run_verifier":
+                raw = params.get("path", "")
+                if raw:
+                    path = Path(raw)
+                    if not path.is_absolute():
+                        try:
+                            path = self.guard.resolve_output(raw)
+                        except Exception:
+                            path = None
+                    if path is not None and path.is_dir():
+                        self.state.add_audit(
+                            "agentic",
+                            "run_verifier 只接受文件路径，已拒绝目录验证",
+                        )
+                        history.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    "run_verifier 只能验证输出目录内的单个文件，"
+                                    "请传入具体文件路径，例如 "
+                                    '{"path": "models/connection.py"}。'
+                                ),
+                            }
+                        )
+                        self.workspace.save_state()
+                        continue
             consecutive_read_only = (
                 consecutive_read_only + 1 if read_only else 0
             )
@@ -1128,16 +1155,21 @@ class AgenticRunner:
         return "\n\n".join(parts)
 
     def _matching_signal(self, item: dict) -> dict | None:
-        """根据编辑证据找到当前文件中的同类型信号。"""
-        evidence = item.get("evidence")
-        if not isinstance(evidence, dict):
-            return None
-        kind = evidence.get("kind")
-        if not kind:
-            return None
+        """根据编辑证据找到当前文件中的关联信号（类型或消息命中）。"""
         file = item.get("file")
+        evidence = item.get("evidence")
+        if isinstance(evidence, str):
+            marker = evidence
+        elif isinstance(evidence, dict):
+            marker = json.dumps(evidence, ensure_ascii=False)
+        else:
+            return None
         for signal in self._collect_expected_unresolved_signals():
-            if signal.get("file") == file and signal.get("kind") == kind:
+            if signal.get("file") != file:
+                continue
+            kind = str(signal.get("kind", ""))
+            message = str(signal.get("message", ""))
+            if (kind and kind in marker) or (message and message in marker):
                 return signal
         return None
 
@@ -1148,6 +1180,8 @@ class AgenticRunner:
         if item.get("impact") in self.config.guardrails.require_approval_impact:
             return False
         evidence = item.get("evidence")
+        if isinstance(evidence, str) and evidence.strip():
+            evidence = {"note": evidence}
         if not isinstance(evidence, dict) or not evidence:
             return False
         marker = json.dumps(evidence, ensure_ascii=False)

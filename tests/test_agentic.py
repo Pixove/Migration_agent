@@ -1030,6 +1030,109 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertEqual(state.unresolved_signals, [])
             self.assertEqual(reviews, [])
 
+    def test_agentic_directed_repair_skips_review_for_string_evidence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            item = {
+                "file": "a.py",
+                "new_content": (
+                    "class A:\n"
+                    "    def close(self):\n"
+                    "        pass\n"
+                ),
+                "evidence": (
+                    "信号: __del__ 清理资源不可靠，建议改为上下文管理器"
+                ),
+                "impact": "low",
+            }
+            reviews = []
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            config.workspace.max_agent_iterations = 2
+            llm = DirectedRepairLLM(
+                main_decisions=[
+                    {"thought": "扫描", "action": "scan_files", "params": {}},
+                    {"thought": "完成", "action": "finish", "params": {}},
+                ],
+                directed_items=[item],
+            )
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=llm,
+                reviewer=lambda item, diff: reviews.append(1) or {
+                    "approved": True,
+                    "issues": [],
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertEqual(state.unresolved_signals, [])
+            self.assertEqual(reviews, [])
+
+    def test_agentic_execute_phase_blocks_scan_and_dir_verifier(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}},
+                {
+                    "thought": "应用",
+                    "action": "apply_patch",
+                    "params": {
+                        "item": {
+                            "id": "p1",
+                            "file": "a.py",
+                            "issue": "x",
+                            "action": "copy",
+                            "impact": "low",
+                        }
+                    },
+                },
+                {"thought": "再扫", "action": "scan_files", "params": {}},
+                {
+                    "thought": "验证目录",
+                    "action": "run_verifier",
+                    "params": {"path": str(output)},
+                },
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            config.workspace.max_agent_iterations = 5
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            messages = [entry.message for entry in state.audit_entries]
+            self.assertTrue(
+                any("禁止读取/检索" in message for message in messages)
+            )
+            self.assertTrue(
+                any("只接受文件路径" in message for message in messages)
+            )
+
     def test_agentic_max_iterations_force_finishes(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"
