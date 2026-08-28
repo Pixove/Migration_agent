@@ -343,6 +343,169 @@ class AgenticRunnerTests(unittest.TestCase):
                 )
             )
 
+    def test_agentic_apply_patch_requires_approval_for_medium(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            decisions = [
+                {
+                    "thought": "应用",
+                    "action": "apply_patch",
+                    "params": {
+                        "item": {
+                            "id": "p1",
+                            "file": "a.py",
+                            "issue": "x",
+                            "action": "copy",
+                            "impact": "medium",
+                        }
+                    },
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+            )
+            with patch("builtins.input", return_value="n"):
+                state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertFalse((output / "a.py").exists())
+            self.assertTrue(
+                any("用户拒绝应用" in entry.message for entry in state.audit_entries)
+            )
+
+    def test_agentic_auto_verify_rolls_back_invalid_edit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            item = {
+                "file": "a.py",
+                "new_content": "def broken(:\n",
+                "evidence": {"doc_id": "d1"},
+                "impact": "low",
+            }
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}},
+                {
+                    "thought": "编辑",
+                    "action": "apply_edit",
+                    "params": {"item": item},
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertEqual(
+                (output / "a.py").read_text(encoding="utf-8"),
+                "x = 1\n",
+            )
+            self.assertTrue(
+                any(
+                    entry.message.startswith("应用后验证失败")
+                    for entry in state.audit_entries
+                )
+            )
+            self.assertTrue(
+                any(item.status == "failed" for item in state.plan_items)
+            )
+
+    def test_agentic_review_unavailable_allows_edit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            item = {
+                "file": "a.py",
+                "new_content": "x = 2\n",
+                "evidence": {"doc_id": "d1"},
+                "impact": "low",
+            }
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}},
+                {
+                    "thought": "编辑",
+                    "action": "apply_edit",
+                    "params": {"item": item},
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+                reviewer=lambda item, diff: {
+                    "approved": False,
+                    "issues": ["评审不可用"],
+                    "unavailable": True,
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue((output / "a.py").is_file())
+            self.assertTrue(
+                any("评审不可用" in entry.message for entry in state.audit_entries)
+            )
+
+    def test_agentic_skips_failed_read_document_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            decisions = [
+                {
+                    "thought": "读文档",
+                    "action": "read_document",
+                    "params": {"path": "docs/01_废弃API升级.md"},
+                },
+                {
+                    "thought": "再读",
+                    "action": "read_document",
+                    "params": {"path": "docs/01_废弃API升级.md"},
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertEqual(runner.dispatcher.call_counts()["read_document"], 1)
+
     def test_agentic_max_iterations_force_finishes(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"
@@ -499,7 +662,7 @@ class AgenticRunnerTests(unittest.TestCase):
                 for index in range(60)
             ]
             trimmed = runner._trim_history(messages)
-            self.assertEqual(len(trimmed), 40)
+            self.assertEqual(len(trimmed), 24)
             self.assertEqual(trimmed[0], messages[0])
             self.assertIn("当前运行摘要", trimmed[1]["content"])
             self.assertEqual(trimmed[-1], messages[-1])

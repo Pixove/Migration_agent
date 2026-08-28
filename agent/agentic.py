@@ -26,7 +26,7 @@ from tools.patcher import apply_plan_item
 from tools.reporter import write_report as generate_report
 
 MAX_AGENT_ITERATIONS = 20
-MAX_HISTORY_MESSAGES = 40
+MAX_HISTORY_MESSAGES = 24
 
 READ_ONLY_ACTIONS = ("read_document", "read_source", "retrieve_examples")
 EXECUTE_ACTIONS = (
@@ -130,6 +130,7 @@ class AgenticRunner:
         self._approve_all_remaining = False
         self._edit_previews: dict[str, dict] = {}
         self._read_docs: set[str] = set()
+        self._read_attempts: set[str] = set()
         self._reviewer = reviewer or (
             lambda item, diff: review_edit(self.llm, item, diff)
         )
@@ -287,17 +288,60 @@ class AgenticRunner:
 
             if action == "read_document":
                 doc_path = params.get("path", "")
-                if doc_path in self._read_docs:
+                if not doc_path:
                     self.state.add_audit(
                         "agentic",
-                        f"重复读取文档已跳过: {doc_path}",
+                        "read_document 缺少 path 参数",
+                    )
+                    history.append(
+                        {
+                            "role": "user",
+                            "content": "read_document 需要 path 参数，请补充。",
+                        }
+                    )
+                    self.workspace.save_state()
+                    continue
+                if doc_path in self._read_attempts:
+                    self.state.add_audit(
+                        "agentic",
+                        f"文档路径已尝试过，跳过: {doc_path}",
                     )
                     history.append(
                         {
                             "role": "user",
                             "content": (
-                                f"文档 {doc_path} 已在历史中，"
-                                "请直接使用历史内容，不要重复读取。"
+                                f"路径 {doc_path} 已尝试过（成功或失败），"
+                                "请勿重复尝试。"
+                            ),
+                        }
+                    )
+                    self.workspace.save_state()
+                    continue
+                self._read_attempts.add(doc_path)
+
+            if action == "apply_patch":
+                patch_item = (
+                    params.get("item")
+                    if isinstance(params.get("item"), dict)
+                    else {}
+                )
+                impact = patch_item.get("impact")
+                if (
+                    impact in self.config.guardrails.require_approval_impact
+                    and not self.auto_approve
+                    and not self._approve_all_remaining
+                    and not self._default_confirm(patch_item)
+                ):
+                    self.state.add_audit(
+                        "agentic",
+                        f"用户拒绝应用: {patch_item.get('file')}",
+                    )
+                    history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"用户拒绝了对 {patch_item.get('file')} 的应用，"
+                                "请调整或跳过。"
                             ),
                         }
                     )
@@ -348,22 +392,38 @@ class AgenticRunner:
 
                 review = self._reviewer(edit_item, preview.get("diff", ""))
                 if not review.get("approved"):
-                    self.state.add_audit(
-                        "agentic",
-                        f"评审未通过: {edit_item.get('file')}",
-                        {"issues": review.get("issues", [])},
-                    )
-                    history.append(
-                        {
-                            "role": "user",
-                            "content": (
-                                f"评审未通过: {review.get('issues')}，"
-                                "请调整编辑或跳过。"
-                            ),
-                        }
-                    )
-                    self.workspace.save_state()
-                    continue
+                    if review.get("unavailable"):
+                        self.state.add_audit(
+                            "agentic",
+                            f"评审不可用，记录风险后放行: {edit_item.get('file')}",
+                            {"issues": review.get("issues", [])},
+                        )
+                        history.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    f"评审不可用，已记录风险后放行: "
+                                    f"{edit_item.get('file')}"
+                                ),
+                            }
+                        )
+                    else:
+                        self.state.add_audit(
+                            "agentic",
+                            f"评审未通过: {edit_item.get('file')}",
+                            {"issues": review.get("issues", [])},
+                        )
+                        history.append(
+                            {
+                                "role": "user",
+                                "content": (
+                                    f"评审未通过: {review.get('issues')}，"
+                                    "请调整编辑或跳过。"
+                                ),
+                            }
+                        )
+                        self.workspace.save_state()
+                        continue
 
                 impact = edit_item.get("impact")
                 if (
@@ -411,7 +471,15 @@ class AgenticRunner:
                     if isinstance(preview, dict) and preview.get("file"):
                         self._edit_previews[preview["file"]] = preview
                 if action in ("apply_patch", "apply_edit"):
-                    self._record_applied_item(action, params, result.result)
+                    verified = self._auto_verify_apply(
+                        action,
+                        params,
+                        result.result,
+                    )
+                    if verified:
+                        self._record_applied_item(action, params, result.result)
+                    else:
+                        self._record_failed_item(action, params, result.result)
                 if action == "apply_edit":
                     remaining_signals = self._signals_after_edit(
                         edit_item,
@@ -440,7 +508,7 @@ class AgenticRunner:
                         "role": "user",
                         "content": (
                             f"工具 {action} 返回: "
-                            f"{json.dumps(result.result, ensure_ascii=False)[:2000]}"
+                            f"{json.dumps(result.result, ensure_ascii=False)[:600]}"
                         ),
                     }
                 )
@@ -611,7 +679,7 @@ class AgenticRunner:
             )
         else:
             plan_item = PlanItem(
-                id=f"edit-{file}",
+                id=f"edit-{file.replace('/', '-')}",
                 file=file,
                 issue=item_raw.get("issue", "语义编辑"),
                 action="edit",
@@ -620,6 +688,64 @@ class AgenticRunner:
                 status="applied",
                 output_file=self._relative_output(payload),
             )
+        self.state.add_plan_item(plan_item)
+
+    def _auto_verify_apply(
+        self,
+        action: str,
+        params: dict,
+        payload: Any,
+    ) -> bool:
+        """应用后自动验证输出文件，失败则回滚。"""
+        if not isinstance(payload, dict) or not payload.get("output_path"):
+            return False
+        output_path = Path(payload["output_path"])
+        verify = self.dispatcher.call("run_verifier", path=str(output_path))
+        if verify.success and verify.result.get("success"):
+            return True
+        output_path.unlink(missing_ok=True)
+        file = params.get("item", {}).get("file", "") if isinstance(
+            params.get("item"), dict
+        ) else ""
+        self.state.add_audit(
+            "agentic",
+            f"应用后验证失败，已回滚: {file}",
+            {"verify_error": verify.error or "验证失败"},
+        )
+        return False
+
+    def _record_failed_item(
+        self,
+        action: str,
+        params: dict,
+        payload: Any,
+    ) -> None:
+        item_raw = (
+            params.get("item")
+            if isinstance(params.get("item"), dict)
+            else {}
+        )
+        file = item_raw.get("file", "")
+        if not file:
+            return
+        evidence = item_raw.get("evidence", {})
+        if isinstance(evidence, str):
+            evidence = {"note": evidence}
+        plan_item = PlanItem(
+            id=item_raw.get("id") or f"applied-{file}",
+            file=file,
+            issue=item_raw.get("issue", "应用计划"),
+            action=(
+                "edit"
+                if action == "apply_edit"
+                else item_raw.get("action", "copy")
+            ),
+            impact=item_raw.get("impact", "low"),
+            evidence=evidence if isinstance(evidence, dict) else {},
+            status="failed",
+            error="应用后验证失败，已回滚",
+            output_file=self._relative_output(payload),
+        )
         self.state.add_plan_item(plan_item)
 
     def _relative_output(self, payload: Any) -> str | None:

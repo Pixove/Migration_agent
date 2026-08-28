@@ -7,7 +7,7 @@ from agent.llm import LLMClient, LLMError, parse_json_object
 
 REVIEW_PROMPT = (
     "你是企业级代码迁移评审员。请审查一条语义编辑是否合理，"
-    "必须返回 JSON："
+    "必须严格返回 JSON, 一个字符都不要多："
     '{"approved": true/false, "issues": ["..."]}。\n'
     "检查要点：\n"
     "1. 改动是否只在声明的文件和行范围内；\n"
@@ -15,7 +15,7 @@ REVIEW_PROMPT = (
     "3. 是否引入无关改动；\n"
     "4. 是否明显语法或逻辑错误；\n"
     "5. 不确定时 approved 必须为 false。\n"
-    "不要输出其他内容。"
+    "不要任何输出其他内容。"
 )
 
 
@@ -58,4 +58,8 @@ def review_edit(llm: LLMClient, item: dict, diff: str) -> dict:
                     ),
                 }
             )
-    return {"approved": False, "issues": ["评审响应解析失败"]}
+    return {
+        "approved": False,
+        "issues": ["评审响应解析失败"],
+        "unavailable": True,
+    }

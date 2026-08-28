@@ -31,6 +31,7 @@ class ReviewEditTests(unittest.TestCase):
         result = review_edit(llm, {"file": "a.py"}, "diff")
         self.assertFalse(result["approved"])
         self.assertTrue(result["issues"])
+        self.assertTrue(result["unavailable"])
 
     def test_retry_after_parse_failure(self):
         llm = FakeReviewLLM(
