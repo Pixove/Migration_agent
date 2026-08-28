@@ -262,7 +262,12 @@ class AgenticRunnerTests(unittest.TestCase):
             source = Path(tmp) / "src"
             output = Path(tmp) / "out"
             source.mkdir()
-            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
             decisions = [
                 {"thought": "扫描", "action": "scan_files", "params": {}},
                 {
@@ -278,31 +283,13 @@ class AgenticRunnerTests(unittest.TestCase):
                         }
                     },
                 },
+            ] + [
                 {
                     "thought": "读源码",
                     "action": "read_source",
                     "params": {"path": "a.py"},
-                },
-                {
-                    "thought": "读源码",
-                    "action": "read_source",
-                    "params": {"path": "a.py"},
-                },
-                {
-                    "thought": "读源码",
-                    "action": "read_source",
-                    "params": {"path": "a.py"},
-                },
-                {
-                    "thought": "读源码",
-                    "action": "read_source",
-                    "params": {"path": "a.py"},
-                },
-                {
-                    "thought": "读源码",
-                    "action": "read_source",
-                    "params": {"path": "a.py"},
-                },
+                }
+                for _ in range(5)
             ]
             config = load_config("config.yaml")
             config.retrieval.vector_enabled = False
@@ -698,6 +685,9 @@ class AgenticRunnerTests(unittest.TestCase):
                 "class A:\n    def close(self):\n        pass\n",
             )
             self.assertEqual(state.unresolved_signals, [])
+            self.assertTrue(
+                any("自动收尾" in entry.message for entry in state.audit_entries)
+            )
 
     def test_agentic_directed_repair_fixes_signals_out_of_order(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -873,6 +863,106 @@ class AgenticRunnerTests(unittest.TestCase):
             }
             self.assertIn("a.py", unresolved_files)
             self.assertNotIn("b.py", unresolved_files)
+
+    def test_agentic_read_phase_auto_enters_execute(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}}
+            ] + [
+                {
+                    "thought": "读源码",
+                    "action": "read_source",
+                    "params": {"path": "a.py"},
+                }
+                for _ in range(10)
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            config.workspace.max_agent_iterations = 12
+            llm = RecordingAgentLLM(decisions)
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=llm,
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue(
+                any(
+                    "读取阶段达到上限" in entry.message
+                    for entry in state.audit_entries
+                )
+            )
+            self.assertTrue(
+                any(
+                    "迁移信号清单" in message["content"]
+                    for history in llm.histories
+                    for message in history
+                )
+            )
+
+    def test_agentic_directed_repair_skips_review_for_low_impact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            item = {
+                "file": "a.py",
+                "new_content": (
+                    "class A:\n"
+                    "    def close(self):\n"
+                    "        pass\n"
+                ),
+                "evidence": {"kind": "destructor"},
+                "impact": "low",
+            }
+            reviews = []
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            config.workspace.max_agent_iterations = 2
+            llm = DirectedRepairLLM(
+                main_decisions=[
+                    {"thought": "扫描", "action": "scan_files", "params": {}},
+                    {"thought": "完成", "action": "finish", "params": {}},
+                ],
+                directed_items=[item],
+            )
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=llm,
+                reviewer=lambda item, diff: reviews.append(1) or {
+                    "approved": True,
+                    "issues": [],
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertEqual(state.unresolved_signals, [])
+            self.assertEqual(reviews, [])
 
     def test_agentic_max_iterations_force_finishes(self):
         with tempfile.TemporaryDirectory() as tmp:

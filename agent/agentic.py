@@ -29,6 +29,7 @@ DEFAULT_MAX_AGENT_ITERATIONS = 20
 MAX_HISTORY_MESSAGES = 24
 DIRECTED_REPAIR_ATTEMPTS_PER_SIGNAL = 2
 MAX_DIRECTED_REPAIR_TURNS = 20
+MAX_READ_PHASE_ITERATIONS = 8
 
 READ_ONLY_ACTIONS = ("read_document", "read_source", "retrieve_examples")
 EXECUTE_ACTIONS = (
@@ -192,6 +193,7 @@ class AgenticRunner:
         ]
 
         consecutive_read_only = 0
+        read_iterations = 0
         iteration = 0
         while True:
             iteration_limit = max(
@@ -283,22 +285,21 @@ class AgenticRunner:
                 self.workspace.save_state()
                 return
 
+            if self._phase == "read":
+                read_iterations += 1
+                if read_iterations >= MAX_READ_PHASE_ITERATIONS:
+                    self.state.add_audit(
+                        "agentic",
+                        (
+                            "读取阶段达到上限 "
+                            f"{MAX_READ_PHASE_ITERATIONS} 轮，自动进入执行阶段"
+                        ),
+                    )
+                    self._enter_execute_phase(history)
+
             read_only = action in READ_ONLY_ACTIONS
             if self._phase == "read" and action in EXECUTE_ACTIONS:
-                self._phase = "execute"
-                self.state.add_audit("agentic", "进入执行阶段")
-                signals = self._collect_signals_for_files()
-                if signals:
-                    history.append(
-                        {
-                            "role": "user",
-                            "content": (
-                                "迁移信号清单（必须逐一处理，"
-                                "resolve 或给出理由，不允许漏过）：\n"
-                                f"{json.dumps(signals, ensure_ascii=False)}"
-                            ),
-                        }
-                    )
+                self._enter_execute_phase(history)
             consecutive_read_only = (
                 consecutive_read_only + 1 if read_only else 0
             )
@@ -418,40 +419,52 @@ class AgenticRunner:
                         self.workspace.save_state()
                         continue
 
-                review = self._reviewer(edit_item, preview.get("diff", ""))
-                if not review.get("approved"):
-                    if review.get("unavailable"):
-                        self.state.add_audit(
-                            "agentic",
-                            f"评审不可用，记录风险后放行: {edit_item.get('file')}",
-                            {"issues": review.get("issues", [])},
-                        )
-                        history.append(
-                            {
-                                "role": "user",
-                                "content": (
-                                    f"评审不可用，已记录风险后放行: "
+                if self._skip_llm_review(edit_item, self._matching_signal(edit_item)):
+                    self.state.add_audit(
+                        "agentic",
+                        f"低影响信号编辑跳过 LLM 评审: {edit_item.get('file')}",
+                    )
+                else:
+                    review = self._reviewer(
+                        edit_item,
+                        preview.get("diff", ""),
+                    )
+                    if not review.get("approved"):
+                        if review.get("unavailable"):
+                            self.state.add_audit(
+                                "agentic",
+                                (
+                                    f"评审不可用，记录风险后放行: "
                                     f"{edit_item.get('file')}"
                                 ),
-                            }
-                        )
-                    else:
-                        self.state.add_audit(
-                            "agentic",
-                            f"评审未通过: {edit_item.get('file')}",
-                            {"issues": review.get("issues", [])},
-                        )
-                        history.append(
-                            {
-                                "role": "user",
-                                "content": (
-                                    f"评审未通过: {review.get('issues')}，"
-                                    "请调整编辑或跳过。"
-                                ),
-                            }
-                        )
-                        self.workspace.save_state()
-                        continue
+                                {"issues": review.get("issues", [])},
+                            )
+                            history.append(
+                                {
+                                    "role": "user",
+                                    "content": (
+                                        f"评审不可用，已记录风险后放行: "
+                                        f"{edit_item.get('file')}"
+                                    ),
+                                }
+                            )
+                        else:
+                            self.state.add_audit(
+                                "agentic",
+                                f"评审未通过: {edit_item.get('file')}",
+                                {"issues": review.get("issues", [])},
+                            )
+                            history.append(
+                                {
+                                    "role": "user",
+                                    "content": (
+                                        f"评审未通过: {review.get('issues')}，"
+                                        "请调整编辑或跳过。"
+                                    ),
+                                }
+                            )
+                            self.workspace.save_state()
+                            continue
 
                 impact = edit_item.get("impact")
                 if (
@@ -506,6 +519,16 @@ class AgenticRunner:
                     )
                     if verified:
                         self._record_applied_item(action, params, result.result)
+                        if (
+                            not self._collect_expected_unresolved_signals()
+                            and self._all_scanned_files_written()
+                        ):
+                            self.state.add_audit(
+                                "agentic",
+                                "信号已全部清除且文件齐全，harness 自动收尾",
+                            )
+                            self.workspace.save_state()
+                            return
                     else:
                         self._record_failed_item(action, params, result.result)
                 if action == "apply_edit":
@@ -873,21 +896,27 @@ class AgenticRunner:
             self.state.add_audit("agentic", f"定向修复预览格式异常: {file}")
             return False
 
-        review = self._reviewer(normalized, preview.get("diff", ""))
-        if not review.get("approved"):
-            if review.get("unavailable"):
-                self.state.add_audit(
-                    "agentic",
-                    f"定向修复评审不可用，记录风险后放行: {file}",
-                    {"issues": review.get("issues", [])},
-                )
-            else:
-                self.state.add_audit(
-                    "agentic",
-                    f"定向修复评审未通过: {file}",
-                    {"issues": review.get("issues", [])},
-                )
-                return False
+        if self._skip_llm_review(normalized, signal):
+            self.state.add_audit(
+                "agentic",
+                f"低影响信号编辑跳过 LLM 评审: {file}",
+            )
+        else:
+            review = self._reviewer(normalized, preview.get("diff", ""))
+            if not review.get("approved"):
+                if review.get("unavailable"):
+                    self.state.add_audit(
+                        "agentic",
+                        f"定向修复评审不可用，记录风险后放行: {file}",
+                        {"issues": review.get("issues", [])},
+                    )
+                else:
+                    self.state.add_audit(
+                        "agentic",
+                        f"定向修复评审未通过: {file}",
+                        {"issues": review.get("issues", [])},
+                    )
+                    return False
 
         impact = normalized.get("impact")
         if (
@@ -996,6 +1025,66 @@ class AgenticRunner:
                 f"未修复信号 {len(signals)} 个",
                 {"signals": signals},
             )
+
+    def _enter_execute_phase(self, history: list[dict]) -> None:
+        """进入执行阶段并注入信号清单与参考源码。"""
+        self._phase = "execute"
+        self.state.add_audit("agentic", "进入执行阶段")
+        signals = self._collect_signals_for_files()
+        if signals:
+            history.append(
+                {
+                    "role": "user",
+                    "content": self._execute_context_message(signals),
+                }
+            )
+
+    def _execute_context_message(self, signals: list[dict]) -> str:
+        """构造执行阶段提示：信号清单 + 涉及文件的参考源码。"""
+        parts = [
+            "迁移信号清单（必须逐一处理，resolve 或给出理由，不允许漏过）：\n"
+            + json.dumps(signals, ensure_ascii=False)
+        ]
+        file_contents = []
+        for file in sorted({signal["file"] for signal in signals}):
+            text = self._signal_source_text({"file": file, "line": 1})
+            if text:
+                file_contents.append(f"[{file}]\n{text}")
+        if file_contents:
+            parts.append(
+                "参考源码（已注入，无需重复 read_source）：\n"
+                + "\n\n".join(file_contents)
+            )
+        return "\n\n".join(parts)
+
+    def _matching_signal(self, item: dict) -> dict | None:
+        """根据编辑证据找到当前文件中的同类型信号。"""
+        evidence = item.get("evidence")
+        if not isinstance(evidence, dict):
+            return None
+        kind = evidence.get("kind")
+        if not kind:
+            return None
+        file = item.get("file")
+        for signal in self._collect_expected_unresolved_signals():
+            if signal.get("file") == file and signal.get("kind") == kind:
+                return signal
+        return None
+
+    def _skip_llm_review(self, item: dict, signal: dict | None) -> bool:
+        """低影响且证据引用信号的编辑，跳过 LLM 评审，由 harness 验证。"""
+        if signal is None:
+            return False
+        if item.get("impact") in self.config.guardrails.require_approval_impact:
+            return False
+        evidence = item.get("evidence")
+        if not isinstance(evidence, dict) or not evidence:
+            return False
+        marker = json.dumps(evidence, ensure_ascii=False)
+        return (
+            str(signal.get("kind", "")) in marker
+            or str(signal.get("message", "")) in marker
+        )
 
     def _collect_signals_for_files(self) -> list[dict]:
         """扫描输入项目文件，汇总当前迁移信号。"""
