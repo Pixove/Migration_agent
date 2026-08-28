@@ -271,10 +271,14 @@ def _normalize_edit_item(item: Any, ctx: ToolContext) -> dict:
     end = item.get("end_line")
     if not isinstance(start, int) or not isinstance(end, int):
         start, end = 1, line_count
-    if start < 1 or end < start or end > line_count:
+    if start < 1 or start > line_count:
         raise ValueError(
-            f"无效行范围: {start}-{end}，文件共 {line_count} 行"
+            f"无效起始行: {start}，文件共 {line_count} 行"
         )
+    if end < start:
+        raise ValueError(f"无效行范围: {start}-{end}")
+    if end > line_count:
+        end = line_count
 
     normalized = dict(item)
     normalized["new_content"] = content

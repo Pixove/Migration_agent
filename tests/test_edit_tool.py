@@ -97,6 +97,19 @@ class EditToolTests(unittest.TestCase):
                 "x = 2\n",
             )
 
+    def test_end_line_clamped_to_file_length(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dispatcher, output = self._build(tmp)
+            item = dict(EDIT_ITEM)
+            item["start_line"] = 1
+            item["end_line"] = 6
+            result = dispatcher.call("apply_edit", item=item)
+            self.assertTrue(result.success)
+            self.assertEqual(
+                (output / "a.py").read_text(encoding="utf-8"),
+                "x = 2\n",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
