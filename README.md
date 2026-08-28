@@ -111,6 +111,13 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 
 该示例用于体验 `propose_edit → 自动评审 → 人工审批 → apply_edit` 完整链路。
 
+大型语义编辑示例 `examples/semantic_big_demo/`（100+ 行，多个 `__del__`、
+`utcnow`、无锁计数器与全局注册表问题）：
+
+```powershell
+.venv\Scripts\python.exe main.py --source examples\semantic_big_demo --output D:\big_migrated --agentic
+```
+
 ## CLI 参数
 
 | 参数 | 说明 |
