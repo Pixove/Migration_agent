@@ -76,12 +76,21 @@ def apply_line_edit(
 
 
 def apply_edit_item(item: dict, guard: PathGuard) -> PatchResult:
-    """在输出目录内应用一条语义编辑。"""
+    """在输出目录内应用一条语义编辑（基于当前输出内容增量修改）。"""
     source_path = guard.resolve_source(item["file"])
     output_path = guard.resolve_output(item["file"])
-    source_text = source_path.read_text(encoding="utf-8-sig", errors="ignore")
+    if output_path.is_file():
+        base_text = output_path.read_text(
+            encoding="utf-8-sig",
+            errors="ignore",
+        )
+    else:
+        base_text = source_path.read_text(
+            encoding="utf-8-sig",
+            errors="ignore",
+        )
     new_text = apply_line_edit(
-        source_text,
+        base_text,
         item["start_line"],
         item["end_line"],
         item["new_content"],
@@ -91,7 +100,7 @@ def apply_edit_item(item: dict, guard: PathGuard) -> PatchResult:
     output_path.write_text(new_text, encoding="utf-8")
     diff = "".join(
         difflib.unified_diff(
-            source_text.splitlines(keepends=True),
+            base_text.splitlines(keepends=True),
             new_text.splitlines(keepends=True),
             fromfile=f"a/{item['file']}",
             tofile=f"b/{item['file']}",

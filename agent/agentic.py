@@ -615,21 +615,23 @@ class AgenticRunner:
                 )
                 for item_key in fresh_keys
             }
-            pending = fresh
+            pending = [
+                item
+                for item in fresh
+                if attempts_left[self._signal_key(item)] > 0
+            ]
             if key in fresh_keys and attempts_left[key] <= 0:
                 self.state.add_audit(
                     "agentic",
                     f"定向修复失败，放弃信号: "
                     f"{json.dumps(signal, ensure_ascii=False)}",
                 )
-                pending = [
-                    item for item in pending if self._signal_key(item) != key
-                ]
-        if pending:
+        remaining = self._collect_expected_unresolved_signals()
+        if remaining:
             self.state.add_audit(
                 "agentic",
-                f"定向修复结束，仍有 {len(pending)} 个信号未修复",
-                {"signals": pending},
+                f"定向修复结束，仍有 {len(remaining)} 个信号未修复",
+                {"signals": remaining},
             )
         else:
             self.state.add_audit("agentic", "定向修复结束，信号已全部消除")
@@ -661,36 +663,32 @@ class AgenticRunner:
         attempts_left: int,
     ) -> bool:
         """针对单个信号生成定向编辑并应用，返回是否成功落地。"""
-        snippet = self._signal_source_snippet(signal)
-        if snippet is None:
+        source_text = self._signal_source_text(signal)
+        if source_text is None:
             self.state.add_audit(
                 "agentic",
                 f"定向修复无法读取源码: {signal.get('file')}",
             )
             return False
         prompt = (
-            "你现在必须定向修复一个遗留迁移信号。\n"
-            "要求：\n"
-            "1. 只能修改待修复文件之一，不得引入无关改动；\n"
-            "2. 必须移除信号对应的旧写法，不能只叠加新写法；\n"
-            "3. 返回 JSON：{\"item\": {编辑条目}}，不要返回其他内容。\n"
-            "编辑条目字段：file, start_line, end_line, new_content, "
-            "evidence（对象）, impact（low/medium/high，默认 low）；\n"
-            "new_content 是修改后的完整代码片段，缺省行范围时视为整文件替换。\n"
             f"待修复文件: {json.dumps(sorted(pending_files), ensure_ascii=False)}\n"
             f"本次信号: {json.dumps(signal, ensure_ascii=False)}\n"
-            f"当前代码片段:\n{snippet}\n"
+            "文件源码（含行号）:\n"
+            f"{source_text}\n"
+            "请完成该信号的定向修复，直接返回 {\"item\": {...}}，"
+            "不要返回其他内容。"
         )
+        messages = [
+            {"role": "system", "content": self._directed_system_prompt()},
+            {"role": "user", "content": prompt},
+        ]
         item = None
-        for _ in range(2):
+        for attempt in range(2):
             try:
                 raw = self.llm.complete(
-                    [
-                        {"role": "system", "content": self._system_prompt()},
-                        {"role": "user", "content": prompt},
-                    ],
+                    messages,
                     max_tokens=2048,
-                    json_mode=True,
+                    json_mode=(attempt == 0),
                 )
                 data = parse_json_object(raw)
             except LLMError as exc:
@@ -698,30 +696,63 @@ class AgenticRunner:
                     "agentic",
                     f"定向修复响应解析失败: {signal.get('file')}: {exc}",
                 )
+                if attempt == 0:
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "你上一次没有返回合法 JSON。请只返回 "
+                                '{"item": {...}}，不要调用工具。'
+                            ),
+                        }
+                    )
                 continue
-            candidate = None
-            if isinstance(data, dict):
-                candidate = data.get("item")
-                if not isinstance(candidate, dict):
-                    params = data.get("params")
-                    if isinstance(params, dict):
-                        candidate = params.get("item")
-            if isinstance(candidate, dict):
+            candidate = self._extract_edit_item(data)
+            if candidate is not None:
                 item = candidate
                 break
+            action = data.get("action") if isinstance(data, dict) else None
+            params = data.get("params") if isinstance(data, dict) else {}
+            if action == "read_source" and isinstance(params, dict):
+                extra = self._read_source_for_repair(params.get("path", ""))
+                if extra:
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"文件 {params.get('path')} 内容（含行号）：\n"
+                                f"{extra}\n"
+                                "请直接返回 {\"item\": {...}}，不要调用工具。"
+                            ),
+                        }
+                    )
+                    continue
             self.state.add_audit(
                 "agentic",
                 f"定向修复响应缺少 item: {signal.get('file')}",
                 {"raw": (raw or "")[:500]},
             )
+            if attempt == 0:
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "你返回的不是编辑条目。请直接返回 "
+                            '{"item": {...}}，不要调用工具。'
+                        ),
+                    }
+                )
         if item is None:
+            self.state.add_audit(
+                "agentic",
+                f"定向修复未获得编辑条目: {signal.get('file')}",
+            )
             return False
         return self._apply_directed_edit(item, pending_files, signal, attempts_left)
 
-    def _signal_source_snippet(self, signal: dict) -> str | None:
-        """读取信号所在文件（优先输出副本）并返回信号行附近的代码。"""
+    def _signal_source_text(self, signal: dict) -> str | None:
+        """读取信号所在文件（优先输出副本），返回带行号内容。"""
         file = signal.get("file", "")
-        line = int(signal.get("line") or 1)
         output_path = self.guard.resolve_output(file)
         if output_path.is_file():
             text = output_path.read_text(
@@ -737,11 +768,69 @@ class AgenticRunner:
                 errors="ignore",
             )
         lines = text.splitlines()
-        start = max(1, line - 5)
-        end = min(len(lines), line + 5)
-        return "\n".join(
+        numbered = "\n".join(
+            f"{idx}: {line}" for idx, line in enumerate(lines, 1)
+        )
+        if len(numbered) <= 12000:
+            return numbered
+        line = int(signal.get("line") or 1)
+        start = max(1, line - 10)
+        end = min(len(lines), line + 10)
+        window = "\n".join(
             f"{idx}: {lines[idx - 1]}" for idx in range(start, end + 1)
         )
+        return (
+            f"（文件过大，展示前 {4000} 字符与信号附近窗口）\n"
+            f"{numbered[:4000]}\n...\n{window}"
+        )
+
+    def _directed_system_prompt(self) -> str:
+        index = build_document_index()
+        red_lines = build_red_lines()
+        return (
+            "你是企业级代码迁移定向修复器，当前处于收尾修复阶段。\n"
+            "任务：针对给定的迁移信号直接生成一条编辑条目。\n"
+            "约束：\n"
+            "1. 禁止调用任何工具，禁止返回 action 字段；\n"
+            "2. 源码已在用户消息中给出，禁止再读取文件；\n"
+            "3. 只修改待修复文件之一，不得引入无关改动；\n"
+            "4. 必须移除信号对应的旧写法，不能只叠加新写法；\n"
+            "5. 需要新增 import 时，一并写入 new_content；\n"
+            "6. 严格返回 JSON："
+            '{"item": {"file": "...", "start_line": n, "end_line": m, '
+            '"new_content": "...", "evidence": {...}, "impact": "low"}}。\n'
+            "new_content 是修改后的完整代码片段，缺省行范围时视为整文件替换；\n"
+            "evidence 必须是对象（可引用信号本身）；impact 默认 low。\n"
+            f"{index}\n\n{red_lines}"
+        )
+
+    @staticmethod
+    def _extract_edit_item(data: Any) -> dict | None:
+        if not isinstance(data, dict):
+            return None
+        item = data.get("item")
+        if isinstance(item, dict):
+            return item
+        params = data.get("params")
+        if isinstance(params, dict) and isinstance(params.get("item"), dict):
+            return params["item"]
+        return None
+
+    def _read_source_for_repair(self, path: str) -> str | None:
+        """定向修复兜底：模型要求读源码时，由 harness 提供文件内容。"""
+        if not path:
+            return None
+        try:
+            target = self.guard.resolve_source(path)
+        except Exception:
+            return None
+        if not target.is_file():
+            return None
+        text = target.read_text(encoding="utf-8-sig", errors="ignore")
+        lines = text.splitlines()
+        return "\n".join(
+            f"{idx}: {line}" for idx, line in enumerate(lines, 1)
+        )[:12000]
 
     def _apply_directed_edit(
         self,

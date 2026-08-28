@@ -245,6 +245,21 @@ def _read_source(
     return {"path": normalized, "content": content, "truncated": truncated}
 
 
+def _edit_base_text(ctx: ToolContext, file: str) -> tuple[str, Path]:
+    """返回编辑基准文本：输出文件已存在时以输出为准，否则以源文件为准。"""
+    output_path = ctx.guard.resolve_output(file)
+    if output_path.is_file():
+        return (
+            output_path.read_text(encoding="utf-8-sig", errors="ignore"),
+            output_path,
+        )
+    source_path = ctx.guard.resolve_source(file)
+    return (
+        source_path.read_text(encoding="utf-8-sig", errors="ignore"),
+        source_path,
+    )
+
+
 def _normalize_edit_item(item: Any, ctx: ToolContext) -> dict:
     """校验并归一化编辑条目：兼容 replacement、推断整文件行范围。"""
     if not isinstance(item, dict):
@@ -264,9 +279,8 @@ def _normalize_edit_item(item: Any, ctx: ToolContext) -> dict:
     if impact not in VALID_IMPACT_LEVELS:
         raise ValueError(f"非法影响面: {impact}")
 
-    source_path = ctx.guard.resolve_source(file)
-    source_text = source_path.read_text(encoding="utf-8-sig", errors="ignore")
-    line_count = len(source_text.splitlines())
+    base_text, _ = _edit_base_text(ctx, file)
+    line_count = len(base_text.splitlines())
     start = item.get("start_line")
     end = item.get("end_line")
     if not isinstance(start, int) or not isinstance(end, int):
@@ -291,17 +305,16 @@ def _normalize_edit_item(item: Any, ctx: ToolContext) -> dict:
 def _propose_edit(ctx: ToolContext, item: Any = None, **kwargs: Any) -> dict[str, Any]:
     """生成语义编辑 diff 预览，不写任何文件。"""
     item = _normalize_edit_item(item, ctx)
-    source_path = ctx.guard.resolve_source(item["file"])
-    source_text = source_path.read_text(encoding="utf-8-sig", errors="ignore")
+    base_text, _ = _edit_base_text(ctx, item["file"])
     new_text = apply_line_edit(
-        source_text,
+        base_text,
         item["start_line"],
         item["end_line"],
         item["new_content"],
     )
     diff = "".join(
         difflib.unified_diff(
-            source_text.splitlines(keepends=True),
+            base_text.splitlines(keepends=True),
             new_text.splitlines(keepends=True),
             fromfile=f"a/{item['file']}",
             tofile=f"b/{item['file']}",

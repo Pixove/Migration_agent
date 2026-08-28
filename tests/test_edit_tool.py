@@ -110,6 +110,59 @@ class EditToolTests(unittest.TestCase):
                 "x = 2\n",
             )
 
+    def test_apply_edit_is_incremental_over_existing_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n"
+                "    def opened_at(self):\n"
+                "        return datetime.utcnow()\n",
+                encoding="utf-8",
+            )
+            config = load_config("config.yaml")
+            ctx = ToolContext(config=config, guard=PathGuard(source, output))
+            dispatcher = ToolDispatcher(
+                ToolRegistry(config.guardrails.allowed_tools)
+            )
+            register_tools(dispatcher, ctx)
+
+            first = {
+                "file": "a.py",
+                "start_line": 2,
+                "end_line": 3,
+                "new_content": (
+                    "    def __enter__(self):\n"
+                    "        return self\n"
+                    "    def __exit__(self, exc_type, exc_val, exc_tb):\n"
+                    "        self.close()\n"
+                ),
+                "evidence": {"kind": "destructor"},
+                "impact": "low",
+            }
+            second = {
+                "file": "a.py",
+                "start_line": 7,
+                "end_line": 7,
+                "new_content": (
+                    "        return datetime.now(datetime.timezone.utc)\n"
+                ),
+                "evidence": {"kind": "deprecated_time"},
+                "impact": "low",
+            }
+            self.assertTrue(dispatcher.call("apply_edit", item=first).success)
+            preview = dispatcher.call("propose_edit", item=second)
+            self.assertTrue(preview.success)
+            self.assertNotIn("__del__", preview.result["diff"])
+            self.assertTrue(dispatcher.call("apply_edit", item=second).success)
+            text = (output / "a.py").read_text(encoding="utf-8")
+            self.assertNotIn("__del__", text)
+            self.assertNotIn("utcnow", text)
+            self.assertIn("datetime.timezone.utc", text)
+
 
 if __name__ == "__main__":
     unittest.main()
