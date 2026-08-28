@@ -12,12 +12,12 @@ class SemanticBigDemoTests(unittest.TestCase):
         source = Path("examples/semantic_big_demo")
         return [path for path in source.rglob("*.py") if path.is_file()]
 
-    def test_total_lines_over_100(self):
+    def test_total_lines_over_300(self):
         total = sum(
             len(path.read_text(encoding="utf-8-sig").splitlines())
             for path in self._py_files()
         )
-        self.assertGreater(total, 100)
+        self.assertGreater(total, 300)
 
     def test_all_files_parse(self):
         for path in self._py_files():
@@ -30,7 +30,17 @@ class SemanticBigDemoTests(unittest.TestCase):
             total += len(
                 scan_python_signals(text, path.relative_to("examples"))
             )
-        self.assertGreaterEqual(total, 5)
+        self.assertGreaterEqual(total, 15)
+
+    def test_new_modules_exist(self):
+        source = Path("examples/semantic_big_demo")
+        for relative in (
+            "models/session.py",
+            "services/events.py",
+            "services/worker.py",
+            "utils/logger.py",
+        ):
+            self.assertTrue((source / relative).is_file(), relative)
 
 
 if __name__ == "__main__":

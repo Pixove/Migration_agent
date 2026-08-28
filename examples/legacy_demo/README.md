@@ -83,11 +83,7 @@ Python 3 AST 验证，会被正确回滚并标记 `failed`，这是预期行为�
 不启动完整流程，直接看规则集效果：
 
 ```powershell
-.venv\Scripts\python.exe examples\transform_demo.py
+.venv\Scripts\python.exe -m unittest tests.test_transform -v
 ```
 
-也可以直接指定任意文件：
-
-```powershell
-.venv\Scripts\python.exe examples\transform_demo.py D:\any\file.py
-```
+该测试会对 `python2_demo.py` 等样例运行转换并断言结果。

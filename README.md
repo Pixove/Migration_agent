@@ -89,12 +89,6 @@ cd D:\demo_migrated
 D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 ```
 
-不启动完整流程，快速查看规则转换效果：
-
-```powershell
-.venv\Scripts\python.exe examples\transform_demo.py
-```
-
 另有 Python 3.8 风格升级示例 `examples/py38_demo/`：
 
 ```powershell
@@ -103,16 +97,8 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 
 迁移完成后在输出目录运行 `main.py` 验证。
 
-语义编辑示例 `examples/semantic_demo/`（内存泄漏、废弃时间 API、无锁计数器）：
-
-```powershell
-.venv\Scripts\python.exe main.py --source examples\semantic_demo --output D:\semantic_migrated --agentic
-```
-
-该示例用于体验 `propose_edit → 自动评审 → 人工审批 → apply_edit` 完整链路。
-
-大型语义编辑示例 `examples/semantic_big_demo/`（100+ 行，多个 `__del__`、
-`utcnow`、无锁计数器与全局注册表问题）：
+大型语义编辑示例 `examples/semantic_big_demo/`（300+ 行，15 个文件，
+20 个 `__del__` / `utcnow` / `utcfromtimestamp` 信号）：
 
 ```powershell
 .venv\Scripts\python.exe main.py --source examples\semantic_big_demo --output D:\big_migrated --agentic

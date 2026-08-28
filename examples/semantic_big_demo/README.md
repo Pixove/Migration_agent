@@ -3,11 +3,25 @@
 用于测试 Agentic 语义编辑模式的中型项目，代码量超过 100 行，
 包含多个需要语义修复的问题：
 
-- 多个 `__del__` 清理资源（`Connection`、`Cache`、`TaskQueue`、`RegistryEntry`）；
+- 多个 `__del__` 清理资源（`Connection`、`Cache`、`Session`、`TaskQueue`、
+  `WorkerPool`、`EventBus`、`RegistryEntry`、`Logger`）；
 - 多处 `datetime.utcnow` / `utcfromtimestamp`（废弃且返回 naive 时间）；
 - 无锁计数器 `self.value += 1`（并发安全）；
 - 全局可变注册表只增不减（内存增长）；
 - 队列/资源缺少显式生命周期管理。
+
+项目结构：
+
+```text
+semantic_big_demo/
+├─ main.py               # 工作流入口，串联全部模块
+├─ models/               # Cache / Connection / Session / Counter
+├─ services/             # EventBus / TaskQueue / WorkerPool / reporting
+└─ utils/                # Logger / registry / timeutil
+```
+
+扫描器可识别的迁移信号 20 个，覆盖 `__del__`、`utcnow`、
+`utcfromtimestamp` 三类，适合验证主循环与定向修复的接力效果。
 
 ## 运行
 
