@@ -21,7 +21,9 @@ def evaluate_agentic_run(
 ) -> dict:
     """评估一次 Agentic 执行的工具序列质量。"""
     violations = [
-        call for call in tool_calls if call not in allowed_tools
+        call
+        for call in tool_calls
+        if call not in allowed_tools and call != "finish"
     ]
     matched = sum(
         1

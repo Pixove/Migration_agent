@@ -10,7 +10,11 @@ def load_golden(path: str | Path = GOLDEN_FILE) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
-def evaluate_edit_proposal(case: dict, proposal: dict) -> dict:
+def evaluate_edit_proposal(
+    case: dict,
+    proposal: dict,
+    baseline: bool = False,
+) -> dict:
     """判断一次语义编辑提案是否与 golden 期望一致。"""
     passed = (
         proposal.get("file") == case["file"]
@@ -21,7 +25,10 @@ def evaluate_edit_proposal(case: dict, proposal: dict) -> dict:
     return {
         "name": case["name"],
         "passed": passed,
-        "evidence_ok": bool(proposal.get("evidence")),
+        # 基线模式没有真实提案，不判定证据；传入实际提案时才有效。
+        "evidence_ok": (
+            None if baseline else bool(proposal.get("evidence"))
+        ),
     }
 
 
@@ -31,11 +38,12 @@ def run_edit_evals(
 ) -> dict:
     """评估语义编辑提案质量；未提供提案时以 golden 自身为基线。"""
     golden = golden or load_golden()
+    baseline = proposals is None
     if proposals is None:
         proposals = list(golden["cases"])
 
     results = [
-        evaluate_edit_proposal(case, proposal)
+        evaluate_edit_proposal(case, proposal, baseline=baseline)
         for case, proposal in zip(golden["cases"], proposals)
     ]
     total = len(results)

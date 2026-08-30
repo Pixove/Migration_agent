@@ -34,6 +34,7 @@ class AgenticEvalTests(unittest.TestCase):
         self.assertEqual(report["result"]["tool_accuracy"], 1.0)
         self.assertTrue(report["result"]["sequence_match"])
         self.assertTrue(report["result"]["completion"])
+        self.assertEqual(report["result"]["violation_count"], 0)
 
     def test_violation_detected(self):
         config = load_config("config.yaml")
@@ -51,6 +52,9 @@ class EditEvalTests(unittest.TestCase):
     def test_golden_baseline_passes(self):
         report = run_edit_evals()
         self.assertEqual(report["passed"], report["total"])
+        self.assertTrue(
+            all(case["evidence_ok"] is None for case in report["cases"])
+        )
 
     def test_wrong_edit_fails(self):
         golden = load_edit_golden()
