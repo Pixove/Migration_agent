@@ -91,12 +91,23 @@ def _summary(report: dict) -> dict[str, Any]:
     migration = report.get("migration", {})
     agentic = report.get("agentic", {}).get("result", {})
     edit = report.get("edit", {})
+    retrieval_summary: dict[str, Any] = {
+        "avg_recall": retrieval.get("avg_recall"),
+        "avg_ndcg": retrieval.get("avg_ndcg"),
+        "avg_mrr": retrieval.get("avg_mrr"),
+    }
+    profiles = retrieval.get("profiles")
+    if profiles:
+        retrieval_summary["profiles"] = {
+            name: {
+                "avg_recall": value.get("avg_recall"),
+                "avg_ndcg": value.get("avg_ndcg"),
+                "avg_mrr": value.get("avg_mrr"),
+            }
+            for name, value in profiles.items()
+        }
     return {
-        "retrieval": {
-            "avg_recall": retrieval.get("avg_recall"),
-            "avg_ndcg": retrieval.get("avg_ndcg"),
-            "avg_mrr": retrieval.get("avg_mrr"),
-        },
+        "retrieval": retrieval_summary,
         "migration": {
             "passed": migration.get("passed"),
             "total": migration.get("total"),

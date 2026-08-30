@@ -24,7 +24,43 @@ def run_retrieval_evals(
     """对 golden 查询计算 recall@K、nDCG 与 MRR。"""
     config = config or load_config("config.yaml")
     golden = golden or load_golden()
-    profile = golden.get("profile", "py2to3")
+    profiles = golden.get("profiles")
+    if profiles:
+        per_profile = {
+            name: _run_profile_evals(
+                config,
+                name,
+                item,
+                top_k=item.get("top_k", top_k),
+            )
+            for name, item in profiles.items()
+        }
+        all_cases = [
+            case
+            for report in per_profile.values()
+            for case in report["cases"]
+        ]
+        return {
+            "profiles": per_profile,
+            "avg_recall": _avg(all_cases, "recall"),
+            "avg_ndcg": _avg(all_cases, "ndcg"),
+            "avg_mrr": _avg(all_cases, "mrr"),
+        }
+    return _run_profile_evals(
+        config,
+        golden.get("profile", "py2to3"),
+        golden,
+        top_k=top_k,
+    )
+
+
+def _run_profile_evals(
+    config: AppConfig,
+    profile: str,
+    item: dict,
+    top_k: int,
+) -> dict:
+    """对单个迁移档案的知识库运行检索评估。"""
 
     kb = KnowledgeBase(Path(tempfile.mkdtemp()) / "kb")
     for path in load_profile(profile).knowledge_base:
@@ -32,14 +68,14 @@ def run_retrieval_evals(
     retriever = kb.build_retriever(config.retrieval)
 
     cases = []
-    for item in golden["queries"]:
-        expected = set(item["expected"])
-        hits = retriever.search(item["query"], top_k=top_k)
+    for query_item in item["queries"]:
+        expected = set(query_item["expected"])
+        hits = retriever.search(query_item["query"], top_k=top_k)
         retrieved = [hit.document.doc_id for hit in hits]
         cases.append(
             {
-                "query": item["query"],
-                "expected": item["expected"],
+                "query": query_item["query"],
+                "expected": query_item["expected"],
                 "retrieved": retrieved,
                 "recall": len(expected.intersection(retrieved)) / len(expected),
                 "ndcg": _ndcg(retrieved, expected),

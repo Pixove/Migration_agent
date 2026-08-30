@@ -1,17 +1,34 @@
 {
-  "profile": "py2to3",
-  "queries": [
-    {
-      "query": "print 语句迁移",
-      "expected": ["01_Python2到3语法迁移"]
+  "profiles": {
+    "py2to3": {
+      "top_k": 5,
+      "queries": [
+        {
+          "query": "print 语句迁移",
+          "expected": ["01_Python2到3语法迁移"]
+        },
+        {
+          "query": "并发安全 锁",
+          "expected": ["04_并发安全最佳实践"]
+        },
+        {
+          "query": "内存泄漏 引用环",
+          "expected": ["05_内存泄漏修复指南"]
+        }
+      ]
     },
-    {
-      "query": "并发安全 锁",
-      "expected": ["04_并发安全最佳实践"]
-    },
-    {
-      "query": "内存泄漏 引用环",
-      "expected": ["05_内存泄漏修复指南"]
+    "py3_upgrade": {
+      "top_k": 5,
+      "queries": [
+        {
+          "query": "废弃 API 升级 distutils",
+          "expected": ["01_废弃API升级"]
+        },
+        {
+          "query": "性能优化 match 语句",
+          "expected": ["02_性能与新语法"]
+        }
+      ]
     }
-  ]
+  }
 }
