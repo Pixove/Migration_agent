@@ -70,6 +70,14 @@ $env:OPENAI_API_KEY = "你的密钥"
 .venv\Scripts\python.exe main.py --chat --agentic
 ```
 
+支持的迁移目标示例（“这次迁移的目标是什么？”时可直接这样说）：
+
+- `把项目从 Python 2 迁移到 Python 3`：使用 `py2to3` 档案，修复基础语法；
+- `升级到更高的 Python 3.x 版本`：使用 `py3_upgrade` 档案，处理新语法；
+- `升级 Python 并修复废弃 API`：使用 `py3_upgrade` 档案，处理
+  `distutils`、`imp`、`datetime.utcnow` 等废弃 API；
+- 暂不支持 Django、Flask 等框架升级，回答涉及框架时会被要求重新描述。
+
 普通交互模式（命令行仍可省略路径，程序逐个提示输入）：
 
 ```powershell

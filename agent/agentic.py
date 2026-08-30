@@ -1107,7 +1107,28 @@ class AgenticRunner:
         """进入执行阶段，按批次注入信号清单与参考源码。"""
         self._phase = "execute"
         self.state.add_audit("agentic", "进入执行阶段")
+        if not self.ctx.files:
+            self._ensure_scanned()
         self._inject_next_batch(history)
+
+    def _ensure_scanned(self) -> None:
+        """读取阶段未扫描时，由 harness 自动补齐首次扫描。"""
+        if self.ctx.files:
+            return
+        result = self.dispatcher.call("scan_files")
+        self.state.add_audit(
+            "agentic",
+            "harness 自动补齐扫描",
+            {
+                "success": result.success,
+                "error": result.error,
+                "file_count": len(self.ctx.files),
+            },
+        )
+        if not result.success or not self.ctx.files:
+            raise GuardrailError(
+                f"自动扫描输入项目失败: {result.error or '未发现文件'}"
+            )
 
     def _inject_next_batch(self, history: list[dict]) -> bool:
         """注入下一批待修文件：信号清单 + 文件全文，返回是否注入。"""

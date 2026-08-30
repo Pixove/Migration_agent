@@ -509,7 +509,16 @@ class AgenticRunnerTests(unittest.TestCase):
             with patch("builtins.input", return_value="n"):
                 state = runner.run()
             self.assertEqual(state.phase.value, "done")
-            self.assertFalse((output / "a.py").exists())
+            self.assertEqual(
+                (output / "a.py").read_text(encoding="utf-8"),
+                "x = 1\n",
+            )
+            self.assertFalse(
+                any(
+                    item.id == "p1" and item.status == "applied"
+                    for item in state.plan_items
+                )
+            )
             self.assertTrue(
                 any("用户拒绝应用" in entry.message for entry in state.audit_entries)
             )
@@ -918,6 +927,69 @@ class AgenticRunnerTests(unittest.TestCase):
                     for history in llm.histories
                     for message in history
                 )
+            )
+
+    def test_agentic_harness_auto_scans_when_model_never_scans(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text(
+                "class A:\n"
+                "    def __del__(self):\n"
+                "        pass\n",
+                encoding="utf-8",
+            )
+            item = {
+                "file": "a.py",
+                "new_content": (
+                    "class A:\n"
+                    "    def close(self):\n"
+                    "        pass\n"
+                ),
+                "evidence": {"kind": "destructor"},
+                "impact": "low",
+            }
+            decisions = [
+                {
+                    "thought": "读源码",
+                    "action": "read_source",
+                    "params": {"path": "a.py"},
+                }
+                for _ in range(8)
+            ] + [
+                {
+                    "thought": "修复",
+                    "action": "apply_edit",
+                    "params": {"item": item},
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            config.workspace.max_agent_iterations = 12
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue(
+                any(
+                    "harness 自动补齐扫描" in entry.message
+                    for entry in state.audit_entries
+                )
+            )
+            self.assertNotIn(
+                "__del__",
+                (output / "a.py").read_text(encoding="utf-8"),
             )
 
     def test_agentic_execute_phase_injects_batches(self):
@@ -1555,7 +1627,18 @@ class AgenticRunnerTests(unittest.TestCase):
             )
             state = runner.run()
             self.assertEqual(state.phase.value, "done")
-            self.assertFalse((output / "a.py").exists())
+            self.assertEqual(
+                (output / "a.py").read_text(encoding="utf-8"),
+                "x = 1\n",
+            )
+            self.assertFalse(
+                any(
+                    item.file == "a.py"
+                    and item.action == "edit"
+                    and item.status == "applied"
+                    for item in state.plan_items
+                )
+            )
             self.assertTrue(
                 any("评审未通过" in entry.message for entry in state.audit_entries)
             )
