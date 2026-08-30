@@ -29,6 +29,18 @@ python -m venv .venv
 Copy-Item config.example.yaml config.yaml
 ```
 
+`requirements.txt` 安装的是运行时基础依赖（配置解析、HTTP、向量存储与
+Embedding 模型）。另外有两个按需启用的能力：
+
+- 向量语义检索与 Cross-Encoder 重排：默认关闭。在 `config.yaml` 中把
+  `retrieval.vector.enabled` 与 `retrieval.rerank.enabled` 设为 `true`
+  后启用，用于从知识库中按语义召回迁移范例并重排 Top-K 结果。首次运行
+  会自动下载本地模型（embedding 与 Cross-Encoder），模型未缓存或加载
+  失败时自动降级为纯 BM25 检索。
+- PDF 文档解析：知识库导入 PDF 最佳实践文档时使用。执行
+  `pip install pypdf` 后即可把 PDF 传入 `--docs`；未安装时若导入来源
+  包含 PDF，会提示安装命令并中止该次导入，TXT/Markdown 不受影响。
+
 ### 2. 配置大模型
 
 编辑 `config.yaml` 中的 `llm` 段：
@@ -45,7 +57,20 @@ $env:OPENAI_API_KEY = "你的密钥"
 
 ### 3. 运行迁移
 
-交互模式：
+对话引导模式（推荐，无需在命令行传入路径）：
+
+```powershell
+.venv\Scripts\python.exe main.py --chat
+```
+
+`--chat` 会依次询问迁移目标、输入项目路径与输出路径，并汇总确认后再执行，
+因此不需要 `--source` 与 `--output`。与自主决策模式组合：
+
+```powershell
+.venv\Scripts\python.exe main.py --chat --agentic
+```
+
+普通交互模式（命令行仍可省略路径，程序逐个提示输入）：
 
 ```powershell
 .venv\Scripts\python.exe main.py
@@ -114,7 +139,7 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 | `--docs` | 最佳实践文档路径，文件或目录，可多次指定 |
 | `--no-llm` | 不使用大模型，使用回退复制计划 |
 | `--auto-approve` | 跳过 `medium/high` 计划审批 |
-| `--chat` | 使用对话引导模式确认迁移目标与路径 |
+| `--chat` | 使用对话引导模式确认迁移目标与路径，无需传入 `--source`/`--output` |
 | `--agentic` | 使用 LLM 工具决策循环，让模型自主调用工具 |
 
 ## 工作流程
@@ -249,5 +274,5 @@ migration-agent/
 - `transform` 规则为基础集，复杂语法仍需扩展；
 - 语义编辑依赖大模型生成与评审，无法离线生成；
 - 向量检索与重排需要本地缓存模型，未缓存时对应功能关闭；
-- PDF 解析依赖 `pypdf`，未安装时对应功能关闭；
+- PDF 解析依赖 `pypdf`，未安装时导入含 PDF 的来源会提示安装；
 - LLM 生成修改型计划需要知识库文档作为证据来源。

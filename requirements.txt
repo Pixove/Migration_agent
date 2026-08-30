@@ -5,6 +5,4 @@ chromadb>=0.4.0
 sentence-transformers>=3.0.0
 
 # 以下为可选依赖，按需启用：
-# 向量检索：pip install sentence-transformers
 # PDF 文档解析：pip install pypdf
-# Cross-Encoder 重排依赖 sentence-transformers
