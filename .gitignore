@@ -8,4 +8,5 @@ dist/
 build/
 .migration-agent/
 kb/
+evals/reports/
 *.log

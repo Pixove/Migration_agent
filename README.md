@@ -267,6 +267,13 @@ migration-agent/
 .venv\Scripts\python.exe -m evals.run
 ```
 
+评估不依赖 LLM API；完整报告保存到 `evals/reports/` 下，控制台只输出
+摘要。评估真实 Agentic 轨迹与编辑提案可传 `--state` 读取迁移审计：
+
+```powershell
+.venv\Scripts\python.exe -m evals.run --state D:\migrated\.migration-agent\state.json
+```
+
 详细说明见 `docs/06_评估系统.md`。
 
 ## 文档入口
