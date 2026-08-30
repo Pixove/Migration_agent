@@ -6,12 +6,23 @@ from collections import Counter
 
 from retrieval.documents import Document
 
-_TOKEN_RE = re.compile(r"[a-z0-9_]+")
+_ASCII_TOKEN_RE = re.compile(r"[a-z0-9_]+")
+_CJK_TOKEN_RE = re.compile(r"[\u4e00-\u9fff]+")
 
 
 def tokenize(text: str) -> list[str]:
-    """轻量分词：小写化后提取字母、数字与下划线片段。"""
-    return _TOKEN_RE.findall(text.lower())
+    """轻量分词：英文/数字保留原片段，中文按连续串与二元组切分。"""
+    text = text.lower()
+    tokens = _ASCII_TOKEN_RE.findall(text)
+    for match in _CJK_TOKEN_RE.finditer(text):
+        sequence = match.group()
+        tokens.append(sequence)
+        if len(sequence) >= 2:
+            tokens.extend(
+                sequence[index : index + 2]
+                for index in range(len(sequence) - 1)
+            )
+    return tokens
 
 
 class BM25Retriever:

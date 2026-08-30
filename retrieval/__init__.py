@@ -39,31 +39,61 @@ class HybridRetriever:
         self.vector.index(docs)
 
     def search(self, query: str, top_k: int | None = None) -> list[RetrievalHit]:
-        candidates: list[RetrievalHit] = []
+        bm25_ranked: list[RetrievalHit] = []
+        vector_ranked: list[RetrievalHit] = []
         if self.bm25 is not None:
-            candidates.extend(
+            bm25_ranked = [
                 RetrievalHit(document=doc, score=score, source="bm25")
                 for doc, score in self.bm25.search(query, self.bm25_top_k)
-            )
-        candidates.extend(
+                if score > 0
+            ]
+        vector_ranked = [
             RetrievalHit(document=doc, score=score, source="vector")
             for doc, score in self.vector.search(query, self.vector_top_k)
-        )
+        ]
 
-        merged = self._dedupe(candidates)
+        merged = self._dedupe(bm25_ranked + vector_ranked)
         if self.reranker is not None and merged:
             reranked = self.reranker.rerank(
                 query,
                 [(hit.document, hit.score) for hit in merged],
-                top_k=self.rerank_top_k,
+                top_k=None,
             )
-            return [
+            reranked_hits = [
                 RetrievalHit(document=item.document, score=item.score, source="rerank")
                 for item in reranked
             ]
+            return self._rrf_merge(
+                bm25_ranked,
+                vector_ranked,
+                reranked_hits,
+                limit=top_k or self.rerank_top_k,
+            )
 
         limit = top_k if top_k is not None else len(merged)
         return merged[:limit]
+
+    @staticmethod
+    def _rrf_merge(
+        *rankings: list[RetrievalHit],
+        limit: int = 5,
+        k: int = 60,
+    ) -> list[RetrievalHit]:
+        """用 Reciprocal Rank Fusion 融合多个排序结果，保留强命中。"""
+        scores: dict[str, float] = {}
+        best: dict[str, RetrievalHit] = {}
+        for ranked in rankings:
+            seen: set[str] = set()
+            for rank, hit in enumerate(ranked, start=1):
+                doc_id = hit.document.doc_id
+                if doc_id in seen:
+                    continue
+                seen.add(doc_id)
+                scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank)
+                if doc_id not in best:
+                    best[doc_id] = hit
+        ranked_ids = sorted(scores, key=scores.get, reverse=True)
+        return [best[doc_id] for doc_id in ranked_ids[:limit]]
 
     @staticmethod
     def _dedupe(hits: list[RetrievalHit]) -> list[RetrievalHit]:

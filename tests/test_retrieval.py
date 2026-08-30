@@ -9,6 +9,7 @@ from retrieval import HybridRetriever
 from retrieval.bm25 import BM25Retriever
 from retrieval.documents import Document, load_documents
 from retrieval.embeddings import VectorRetriever
+from retrieval import RetrievalHit
 from retrieval.reranker import Reranker
 
 
@@ -28,6 +29,16 @@ class BM25Tests(unittest.TestCase):
         retriever = BM25Retriever()
         retriever.index([])
         self.assertEqual(retriever.search("print"), [])
+
+    def test_chinese_query_ranks_matching_doc_first(self):
+        docs = [
+            Document("d1", "内存泄漏修复指南：引用环会导致对象无法回收。"),
+            Document("d2", "并发安全最佳实践：使用锁保护共享状态。"),
+        ]
+        retriever = BM25Retriever()
+        retriever.index(docs)
+        hits = retriever.search("内存泄漏 引用环")
+        self.assertEqual(hits[0][0].doc_id, "d1")
 
 
 class VectorRetrieverTests(unittest.TestCase):
@@ -70,6 +81,29 @@ class HybridRetrieverTests(unittest.TestCase):
         self.assertTrue(hits)
         self.assertEqual(hits[0].document.doc_id, "d1")
         self.assertIn(hits[0].source, {"bm25", "rerank"})
+
+    def test_rrf_keeps_strong_bm25_hit_after_rerank(self):
+        def hit(doc_id, source, score):
+            return RetrievalHit(Document(doc_id, "text"), score, source)
+
+        bm25 = [
+            hit("d1", "bm25", 10.0),
+            hit("d2", "bm25", 2.0),
+            hit("d3", "bm25", 1.0),
+        ]
+        reranked = [
+            hit("d3", "rerank", 9.0),
+            hit("d2", "rerank", 8.0),
+            hit("d1", "rerank", 6.0),
+        ]
+        merged = HybridRetriever._rrf_merge(
+            bm25,
+            [],
+            reranked,
+            limit=2,
+        )
+        # BM25 第一的 d1 虽被重排到第三，仍通过 RRF 保留在 Top-2。
+        self.assertEqual([item.document.doc_id for item in merged], ["d1", "d3"])
 
 
 if __name__ == "__main__":
