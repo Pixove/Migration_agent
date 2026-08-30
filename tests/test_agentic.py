@@ -1224,7 +1224,7 @@ class AgenticRunnerTests(unittest.TestCase):
                 (output / "a.py").read_text(encoding="utf-8"),
             )
 
-    def test_agentic_execute_phase_blocks_scan_and_dir_verifier(self):
+    def test_agentic_execute_phase_blocks_scan_and_verifier(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"
             output = Path(tmp) / "out"
@@ -1252,9 +1252,9 @@ class AgenticRunnerTests(unittest.TestCase):
                 },
                 {"thought": "再扫", "action": "scan_files", "params": {}},
                 {
-                    "thought": "验证目录",
+                    "thought": "验证文件",
                     "action": "run_verifier",
-                    "params": {"path": str(output)},
+                    "params": {"path": "a.py"},
                 },
             ]
             config = load_config("config.yaml")
@@ -1271,10 +1271,10 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertEqual(state.phase.value, "done")
             messages = [entry.message for entry in state.audit_entries]
             self.assertTrue(
-                any("禁止读取/检索" in message for message in messages)
+                any("已跳过: scan_files" in message for message in messages)
             )
             self.assertTrue(
-                any("只接受文件路径" in message for message in messages)
+                any("已跳过: run_verifier" in message for message in messages)
             )
 
     def test_agentic_max_iterations_force_finishes(self):

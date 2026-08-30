@@ -36,6 +36,7 @@ EXECUTE_PHASE_BLOCKED_ACTIONS = (
     "read_document",
     "retrieve_examples",
     "scan_files",
+    "run_verifier",
 )
 
 READ_ONLY_ACTIONS = ("read_document", "read_source", "retrieve_examples")
@@ -322,7 +323,8 @@ class AgenticRunner:
                         "content": (
                             "执行阶段由 harness 分批提供待修文件源码与信号，"
                             "禁止再调用 read_source/read_document/retrieve_examples/"
-                            "scan_files，请直接 propose_edit/apply_edit。"
+                            "scan_files/run_verifier；每次编辑后 harness 会自动验证，"
+                            "请直接 propose_edit/apply_edit。"
                         ),
                     }
                 )
