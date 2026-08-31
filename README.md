@@ -47,7 +47,6 @@ Embedding 模型）。另外有两个按需启用的能力：
 
 - `provider: openai`：任意 OpenAI 兼容服务；
 - `provider: ollama`：本地 Ollama；
-- DeepSeek：取消 `openai` 段内注释的三行预设，并设置环境变量。
 
 API Key 通过环境变量提供，不写入配置文件：
 
