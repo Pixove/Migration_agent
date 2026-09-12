@@ -246,6 +246,30 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertEqual(state.phase.value, "done")
             self.assertEqual(llm.calls, 2)
 
+    def test_agentic_retries_missing_action(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            llm = FakeAgentLLM(
+                [
+                    {"thought": "缺少 action", "params": {}},
+                    {"thought": "完成", "action": "finish", "params": {}},
+                ]
+            )
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(config, source, output, llm=llm)
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue(
+                any(
+                    "缺少 action 字段" in entry.message
+                    for entry in state.audit_entries
+                )
+            )
+
     def test_agentic_gives_up_after_retries(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"

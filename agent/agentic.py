@@ -257,6 +257,24 @@ class AgenticRunner:
                     )
 
             action = decision.get("action")
+            if not isinstance(action, str) or not action.strip():
+                self.state.add_audit(
+                    "agentic",
+                    "模型响应缺少 action 字段，要求重试",
+                    {"decision": decision},
+                )
+                history.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "你的上一次响应缺少有效的 action 字段。请只返回 "
+                            '{"action": "工具名或finish", "params": {}}，'
+                            "不要返回其他内容。"
+                        ),
+                    }
+                )
+                self.workspace.save_state()
+                continue
             params = (
                 decision.get("params")
                 if isinstance(decision.get("params"), dict)
