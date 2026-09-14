@@ -222,10 +222,23 @@ propose_edit（生成 diff 预览，不写文件）
 知识库缓存目录由 `config.yaml` 的 `retrieval.kb_dir` 配置，默认 `kb/`，
 已被 `.gitignore` 忽略。
 
-API 迁移信号由 `migration/rules/api_rules.yaml` 规则表驱动，AST 扫描器
-按规则生成待处理文件。新增废弃 API 时，只需在规则表中增加一条
-`type/name/kind/message` 规则，信号会自动进入批次注入、评审与定向修复
-流程，不依赖硬编码扫描逻辑。
+API 迁移信号由 `migration/rules/*.yaml` 规则表驱动，AST 扫描器会合并
+目录下的全部规则文件并生成待处理文件。支持 `function_def`、`call`、
+`attribute`、`module`、`from_import` 五种规则类型；新增废弃 API 时，
+只需增加一条规则，信号会自动进入批次注入、评审与定向修复流程。
+
+例如指定 LangChain Community 的导入迁移：
+
+```yaml
+- id: langchain_community_chroma_import
+  kind: deprecated_api
+  type: from_import
+  module: langchain_community.vectorstores
+  name: Chroma
+  replacement: from langchain_chroma import Chroma
+  message: Chroma 已迁移到 langchain_chroma
+  docs: langchain_community_upgrade
+```
 
 ## 输出与审计
 

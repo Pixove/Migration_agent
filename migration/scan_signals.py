@@ -9,6 +9,14 @@ from typing import Any
 import yaml
 
 RULES_PATH = Path(__file__).parent / "rules" / "api_rules.yaml"
+RULES_DIR = RULES_PATH.parent
+VALID_RULE_TYPES = {
+    "function_def",
+    "call",
+    "attribute",
+    "module",
+    "from_import",
+}
 
 
 @dataclass
@@ -29,6 +37,11 @@ class ApiRule:
     replacement: str = ""
     docs: str = ""
     alias: bool = False
+    module: str = ""
+    package: str = ""
+    deprecated_in: str = ""
+    removed_in: str = ""
+    severity: str = ""
 
 
 _BUILTIN_RULES: tuple[ApiRule, ...] = (
@@ -76,39 +89,101 @@ _BUILTIN_RULES: tuple[ApiRule, ...] = (
 )
 
 
-@lru_cache(maxsize=8)
-def load_api_rules(path: str | Path = RULES_PATH) -> tuple[ApiRule, ...]:
-    """加载 API 规则表；规则文件缺失或为空时回退到内置规则。"""
-    rules_path = Path(path)
-    if not rules_path.is_file():
-        return _BUILTIN_RULES
-    try:
-        data = yaml.safe_load(rules_path.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError):
-        return _BUILTIN_RULES
-    items = data.get("rules")
-    if not isinstance(items, list):
+@lru_cache(maxsize=16)
+def load_api_rules(path: str | Path | None = None) -> tuple[ApiRule, ...]:
+    """加载并合并规则表；文件缺失或为空时回退到内置规则。"""
+    rules_paths = _rule_files(path)
+    if not rules_paths:
         return _BUILTIN_RULES
 
     rules: list[ApiRule] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        try:
-            rule = ApiRule(
-                id=str(item["id"]),
-                kind=str(item["kind"]),
-                type=str(item["type"]),
-                name=str(item["name"]),
-                message=str(item["message"]),
-                replacement=str(item.get("replacement", "")),
-                docs=str(item.get("docs", "")),
-                alias=bool(item.get("alias", False)),
-            )
-        except KeyError:
-            continue
-        rules.append(rule)
+    seen_ids: set[str] = set()
+    for rules_path in rules_paths:
+        for rule in _load_rule_file(rules_path):
+            if rule.id in seen_ids:
+                raise ValueError(
+                    f"API 规则 ID 重复: {rule.id}（{rules_path}）"
+                )
+            seen_ids.add(rule.id)
+            rules.append(rule)
     return tuple(rules) or _BUILTIN_RULES
+
+
+def _rule_files(path: str | Path | None) -> list[Path]:
+    """规则路径为空时加载规则目录下的全部 YAML 文件。"""
+    if path is None:
+        target = RULES_DIR
+    else:
+        target = Path(path)
+    if target.is_dir():
+        return sorted(target.glob("*.yaml")) + sorted(target.glob("*.yml"))
+    if target.is_file():
+        return [target]
+    return []
+
+
+def _load_rule_file(path: Path) -> list[ApiRule]:
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise ValueError(f"读取 API 规则文件失败: {path}: {exc}") from exc
+    items = data.get("rules")
+    if not isinstance(items, list):
+        raise ValueError(f"API 规则文件缺少 rules 列表: {path}")
+
+    rules: list[ApiRule] = []
+    for index, item in enumerate(items, start=1):
+        rules.append(_parse_rule(item, path, index))
+    return rules
+
+
+def _parse_rule(item: Any, path: Path, index: int) -> ApiRule:
+    if not isinstance(item, dict):
+        raise ValueError(f"API 规则必须是对象: {path} 第 {index} 条")
+    missing = [
+        key
+        for key in ("id", "kind", "type", "name", "message")
+        if not item.get(key)
+    ]
+    if missing:
+        raise ValueError(
+            f"API 规则缺少字段 {missing}: {path} 第 {index} 条"
+        )
+    rule_type = str(item["type"])
+    if rule_type not in VALID_RULE_TYPES:
+        raise ValueError(
+            f"API 规则 type 非法: {rule_type}（{path} 第 {index} 条），"
+            f"可选: {sorted(VALID_RULE_TYPES)}"
+        )
+    module = str(item.get("module", ""))
+    if rule_type == "from_import" and not module:
+        raise ValueError(
+            f"from_import 规则缺少 module: {path} 第 {index} 条"
+        )
+    if (
+        str(item["kind"]) == "deprecated_api"
+        and not item.get("replacement")
+        and not item.get("docs")
+    ):
+        raise ValueError(
+            f"deprecated_api 规则缺少 replacement 或 docs: "
+            f"{path} 第 {index} 条"
+        )
+    return ApiRule(
+        id=str(item["id"]),
+        kind=str(item["kind"]),
+        type=rule_type,
+        name=str(item["name"]),
+        message=str(item["message"]),
+        replacement=str(item.get("replacement", "")),
+        docs=str(item.get("docs", "")),
+        alias=bool(item.get("alias", False)),
+        module=module,
+        package=str(item.get("package", "")),
+        deprecated_in=str(item.get("deprecated_in", "")),
+        removed_in=str(item.get("removed_in", "")),
+        severity=str(item.get("severity", "")),
+    )
 
 
 def _dotted_name(node: ast.AST) -> str | None:
@@ -148,12 +223,23 @@ class _SignalVisitor(ast.NodeVisitor):
             "line": getattr(node, "lineno", 0),
             "kind": rule.kind,
             "message": rule.message,
-            "api": rule.name,
+            "api": (
+                f"{rule.module}.{rule.name}"
+                if rule.type == "from_import"
+                else rule.name
+            ),
         }
-        if rule.replacement:
-            signal["replacement"] = rule.replacement
-        if rule.docs:
-            signal["docs"] = rule.docs
+        for key in (
+            "replacement",
+            "docs",
+            "package",
+            "deprecated_in",
+            "removed_in",
+            "severity",
+        ):
+            value = getattr(rule, key)
+            if value:
+                signal[key] = value
         self.signals.append(signal)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
@@ -205,10 +291,17 @@ class _SignalVisitor(ast.NodeVisitor):
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         module = node.module or ""
         for rule in self.rules:
-            if rule.type != "module":
-                continue
-            if module == rule.name or module.startswith(f"{rule.name}."):
-                self._add(node, rule)
+            if rule.type == "module":
+                if module == rule.name or module.startswith(f"{rule.name}."):
+                    self._add(node, rule)
+            elif rule.type == "from_import":
+                if not (
+                    module == rule.module
+                    or module.startswith(f"{rule.module}.")
+                ):
+                    continue
+                if any(alias.name == rule.name for alias in node.names):
+                    self._add(node, rule)
         self.generic_visit(node)
 
 
@@ -222,7 +315,7 @@ def scan_python_signals(
         tree = ast.parse(source_text)
     except SyntaxError:
         return []
-    rules = load_api_rules(rules_path or RULES_PATH)
+    rules = load_api_rules(rules_path)
     visitor = _SignalVisitor(rules)
     visitor.visit(tree)
     return [
