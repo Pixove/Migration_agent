@@ -67,6 +67,8 @@ class MigrationState:
         self.source_root = Path(source_root).resolve()
         self.output_root = Path(output_root).resolve()
         self.audit_dir_name = audit_dir_name
+        self.profile = ""
+        self.scope = ""
         self.created_at = _now()
         self.updated_at = self.created_at
         self.phase = Phase.INIT
@@ -118,6 +120,8 @@ class MigrationState:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "phase": self.phase.value,
+            "profile": self.profile,
+            "scope": self.scope,
             "plan_items": [asdict(item) for item in self.plan_items],
             "audit_entries": [asdict(entry) for entry in self.audit_entries],
             "unresolved_signals": self.unresolved_signals,
@@ -143,6 +147,8 @@ class MigrationState:
         state.created_at = data.get("created_at", state.created_at)
         state.updated_at = data.get("updated_at", state.updated_at)
         state.phase = Phase(data["phase"])
+        state.profile = data.get("profile", "")
+        state.scope = data.get("scope", "")
         state.plan_items = [
             PlanItem(**item) for item in data.get("plan_items", [])
         ]

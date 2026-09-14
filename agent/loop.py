@@ -60,6 +60,8 @@ class MigrationRunner:
         )
         self.llm = None if no_llm else create_llm_client(config.llm)
         self.profile = load_profile(config.migration.profile)
+        self.state.profile = self.profile.name
+        self.state.scope = self.config.migration.scope
         self.rules_paths = list(rules_paths_for_profile(self.profile.rules))
         self.retriever: HybridRetriever | None = None
         self.ctx = ToolContext(

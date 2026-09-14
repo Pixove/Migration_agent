@@ -148,6 +148,8 @@ class AgenticRunner:
             lambda item, diff: review_edit(self.llm, item, diff)
         )
         self.profile = load_profile(config.migration.profile)
+        self.state.profile = self.profile.name
+        self.state.scope = self.config.migration.scope
         self.rules_paths = list(rules_paths_for_profile(self.profile.rules))
         self.retriever: HybridRetriever | None = None
         self.ctx = ToolContext(

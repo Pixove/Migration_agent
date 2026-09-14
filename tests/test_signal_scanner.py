@@ -23,6 +23,9 @@ class SignalScannerTests(unittest.TestCase):
         kinds = {signal["kind"] for signal in signals}
         self.assertIn("destructor", kinds)
         self.assertIn("deprecated_time", kinds)
+        self.assertTrue(
+            all(signal.get("rule_id") for signal in signals)
+        )
 
     def test_clean_file_no_signals(self):
         source = "x = 1\ny = x + 1\n"

@@ -256,6 +256,7 @@ class _SignalVisitor(ast.NodeVisitor):
             "line": getattr(node, "lineno", 0),
             "kind": rule.kind,
             "message": rule.message,
+            "rule_id": rule.id,
             "api": (
                 f"{rule.module}.{rule.name}"
                 if rule.type == "from_import"

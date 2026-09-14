@@ -171,6 +171,8 @@ class ReporterTests(unittest.TestCase):
             output.mkdir()
 
             state = MigrationState(source, output)
+            state.profile = "py3_upgrade"
+            state.scope = "deprecated_api"
             state.verification_checks = [
                 {"name": "import:sys", "ok": True, "message": ""}
             ]
@@ -182,8 +184,25 @@ class ReporterTests(unittest.TestCase):
                     action="copy",
                     impact="low",
                     status="applied",
+                    evidence={
+                        "signal": {
+                            "rule_id": "datetime_utcnow",
+                            "api": "datetime.utcnow",
+                            "docs": "01_废弃API升级",
+                        }
+                    },
                 )
             )
+            state.unresolved_signals = [
+                {
+                    "file": "a.py",
+                    "line": 3,
+                    "message": "示例未修复信号",
+                    "rule_id": "datetime_utcnow",
+                    "api": "datetime.utcnow",
+                    "docs": "01_废弃API升级",
+                }
+            ]
             workspace = AuditWorkspace(state)
             workspace.initialize()
 
@@ -191,6 +210,9 @@ class ReporterTests(unittest.TestCase):
             content = report.read_text(encoding="utf-8")
             self.assertIn("# 迁移报告", content)
             self.assertIn("a.py", content)
+            self.assertIn("py3_upgrade", content)
+            self.assertIn("datetime_utcnow", content)
+            self.assertIn("01_废弃API升级", content)
             self.assertIn("行为验证", content)
 
 
