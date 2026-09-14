@@ -1220,13 +1220,19 @@ class AgenticRunner:
     @staticmethod
     def _signal_keywords(signal: dict) -> list[str]:
         kind = str(signal.get("kind", ""))
+        keywords = [
+            str(signal.get("api", "")),
+            str(signal.get("replacement", "")),
+        ]
         if kind == "destructor":
-            return ["__del__", "destructor", "析构", "上下文管理器"]
-        if kind == "deprecated_time":
-            return ["utcnow", "utcfromtimestamp", "datetime", "timezone"]
-        if kind == "removed_module":
-            return ["distutils", "imp", "模块已移除"]
-        return []
+            keywords.extend(["__del__", "destructor", "析构", "上下文管理器"])
+        elif kind == "deprecated_time":
+            keywords.extend(["utcnow", "utcfromtimestamp", "datetime", "timezone"])
+        elif kind == "removed_module":
+            keywords.extend(["distutils", "imp", "模块已移除"])
+        elif kind == "deprecated_api":
+            keywords.extend(["废弃", "deprecated", "升级", "替代"])
+        return [keyword for keyword in keywords if keyword]
 
     @staticmethod
     def _evidence_matches_signal(evidence: Any, signal: dict) -> bool:

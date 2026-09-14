@@ -1,0 +1,97 @@
+# API 升级规则表：AST 扫描器按本文件生成迁移信号。
+# type: function_def | call | attribute | module
+# alias: 允许通过别名匹配（例如 dt.utcnow、t.Dict）
+rules:
+  - id: destructor
+    kind: destructor
+    type: function_def
+    name: __del__
+    message: __del__ 清理资源不可靠，建议改为上下文管理器
+
+  - id: datetime_utcnow
+    kind: deprecated_time
+    type: call
+    name: datetime.utcnow
+    alias: true
+    replacement: datetime.now(timezone.utc)
+    message: datetime.utcnow 已废弃，建议使用 timezone-aware 时间
+    docs: 01_废弃API升级
+
+  - id: datetime_utcfromtimestamp
+    kind: deprecated_time
+    type: call
+    name: datetime.utcfromtimestamp
+    alias: true
+    replacement: datetime.fromtimestamp(..., tz=timezone.utc)
+    message: datetime.utcfromtimestamp 已废弃，建议使用 timezone-aware 时间
+    docs: 01_废弃API升级
+
+  - id: distutils
+    kind: removed_module
+    type: module
+    name: distutils
+    replacement: setuptools/packaging
+    message: distutils 已移除
+    docs: 01_废弃API升级
+
+  - id: imp
+    kind: removed_module
+    type: module
+    name: imp
+    replacement: importlib
+    message: imp 模块已移除
+    docs: 01_废弃API升级
+
+  - id: asyncio_get_event_loop
+    kind: deprecated_api
+    type: call
+    name: asyncio.get_event_loop
+    alias: true
+    replacement: asyncio.get_running_loop
+    message: asyncio.get_event_loop 已废弃，建议使用 asyncio.get_running_loop
+    docs: 01_废弃API升级
+
+  - id: typing_dict
+    kind: deprecated_api
+    type: attribute
+    name: typing.Dict
+    alias: true
+    replacement: dict
+    message: typing.Dict 建议改用内置泛型 dict
+    docs: 01_废弃API升级
+
+  - id: typing_list
+    kind: deprecated_api
+    type: attribute
+    name: typing.List
+    alias: true
+    replacement: list
+    message: typing.List 建议改用内置泛型 list
+    docs: 01_废弃API升级
+
+  - id: typing_tuple
+    kind: deprecated_api
+    type: attribute
+    name: typing.Tuple
+    alias: true
+    replacement: tuple
+    message: typing.Tuple 建议改用内置泛型 tuple
+    docs: 01_废弃API升级
+
+  - id: typing_set
+    kind: deprecated_api
+    type: attribute
+    name: typing.Set
+    alias: true
+    replacement: set
+    message: typing.Set 建议改用内置泛型 set
+    docs: 01_废弃API升级
+
+  - id: typing_type
+    kind: deprecated_api
+    type: attribute
+    name: typing.Type
+    alias: true
+    replacement: type
+    message: typing.Type 建议改用内置泛型 type
+    docs: 01_废弃API升级
