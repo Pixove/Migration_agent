@@ -7,7 +7,7 @@ from pathlib import Path
 from agent.config import load_config
 from agent.dispatcher import ToolDispatcher
 from agent.guardrails import PathGuard, ToolRegistry
-from agent.tooling import ToolContext, register_tools
+from agent.tooling import ToolContext, normalize_impact, register_tools
 
 EDIT_ITEM = {
     "file": "a.py",
@@ -96,6 +96,26 @@ class EditToolTests(unittest.TestCase):
                 (output / "a.py").read_text(encoding="utf-8"),
                 "x = 2\n",
             )
+
+    def test_list_evidence_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dispatcher, output = self._build(tmp)
+            item = dict(EDIT_ITEM)
+            item["evidence"] = [{"rule_id": "test_rule"}]
+            result = dispatcher.call("apply_edit", item=item)
+            self.assertTrue(result.success)
+            self.assertEqual(
+                (output / "a.py").read_text(encoding="utf-8"),
+                "x = 2\n",
+            )
+
+    def test_impact_aliases_are_normalized(self):
+        self.assertEqual(normalize_impact("low"), "low")
+        self.assertEqual(normalize_impact("minor"), "low")
+        self.assertEqual(normalize_impact("api_change"), "medium")
+        self.assertEqual(normalize_impact("中等影响"), "medium")
+        self.assertEqual(normalize_impact("breaking"), "high")
+        self.assertEqual(normalize_impact("描述性影响面"), "medium")
 
     def test_end_line_clamped_to_file_length(self):
         with tempfile.TemporaryDirectory() as tmp:

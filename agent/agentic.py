@@ -5,7 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from agent.config import VALID_IMPACT_LEVELS, AppConfig
+from agent.config import AppConfig
 from agent.context_loader import build_document_index, build_red_lines
 from agent.dispatcher import ToolDispatcher
 from agent.guardrails import Budget, GuardrailError, build_guardrails
@@ -16,7 +16,7 @@ from agent.llm import (
     parse_json_object,
 )
 from agent.state import AuditWorkspace, MigrationState, Phase, PlanItem
-from agent.tooling import ToolContext, register_tools
+from agent.tooling import ToolContext, normalize_impact, register_tools
 from agent.review import review_edit
 from migration.registry import load_profile
 from migration.scan_signals import rules_paths_for_profile, scan_python_signals
@@ -459,7 +459,7 @@ class AgenticRunner:
                     )
                     self.workspace.save_state()
                     continue
-                impact = patch_item.get("impact")
+                impact = normalize_impact(patch_item.get("impact"))
                 if (
                     impact in self.config.guardrails.require_approval_impact
                     and not self.auto_approve
@@ -571,7 +571,7 @@ class AgenticRunner:
                             self.workspace.save_state()
                             continue
 
-                impact = edit_item.get("impact")
+                impact = normalize_impact(edit_item.get("impact"))
                 if (
                     impact in self.config.guardrails.require_approval_impact
                     and not self.auto_approve
@@ -987,8 +987,7 @@ class AgenticRunner:
                 "line": signal.get("line"),
                 "message": signal.get("message"),
             }
-        if normalized.get("impact") not in VALID_IMPACT_LEVELS:
-            normalized["impact"] = "low"
+        normalized["impact"] = normalize_impact(normalized.get("impact"))
 
         preview_result = self.dispatcher.call("propose_edit", item=normalized)
         if not preview_result.success:

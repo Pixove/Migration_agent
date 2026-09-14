@@ -1700,6 +1700,49 @@ class AgenticRunnerTests(unittest.TestCase):
                 "x = 2\n",
             )
 
+    def test_agentic_normalizes_impact_before_approval(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            item = {
+                "file": "a.py",
+                "start_line": 1,
+                "end_line": 1,
+                "new_content": "x = 2\n",
+                "evidence": {"doc_id": "d1"},
+                "impact": "api_change",
+            }
+            decisions = [
+                {"thought": "扫描", "action": "scan_files", "params": {}},
+                {
+                    "thought": "应用",
+                    "action": "apply_edit",
+                    "params": {"item": item},
+                },
+                {"thought": "完成", "action": "finish", "params": {}},
+            ]
+            config = load_config("config.yaml")
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(decisions),
+                reviewer=lambda item, diff: {
+                    "approved": True,
+                    "issues": [],
+                },
+            )
+            with patch("builtins.input", return_value="n") as mocked:
+                state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertGreaterEqual(mocked.call_count, 1)
+            self.assertEqual(
+                (output / "a.py").read_text(encoding="utf-8"),
+                "x = 1\n",
+            )
+
     def test_agentic_edit_rejected_by_review(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"

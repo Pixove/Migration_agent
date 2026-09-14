@@ -280,11 +280,11 @@ def _normalize_edit_item(item: Any, ctx: ToolContext) -> dict:
     evidence = item.get("evidence")
     if isinstance(evidence, str) and evidence.strip():
         evidence = {"note": evidence}
+    elif isinstance(evidence, list) and evidence:
+        evidence = {"items": evidence}
     if not isinstance(evidence, dict) or not evidence:
         raise ValueError("编辑必须携带证据")
-    impact = str(item.get("impact", ""))
-    if impact not in VALID_IMPACT_LEVELS:
-        raise ValueError(f"非法影响面: {impact}")
+    impact = normalize_impact(item.get("impact"))
 
     base_text, _ = _edit_base_text(ctx, file)
     line_count = len(base_text.splitlines())
@@ -307,6 +307,41 @@ def _normalize_edit_item(item: Any, ctx: ToolContext) -> dict:
     normalized["end_line"] = end
     normalized["evidence"] = evidence
     return normalized
+
+
+_IMPACT_ALIASES = {
+    "low": "low",
+    "minor": "low",
+    "trivial": "low",
+    "none": "low",
+    "低": "low",
+    "低风险": "low",
+    "medium": "medium",
+    "moderate": "medium",
+    "api_change": "medium",
+    "api change": "medium",
+    "breaking": "high",
+    "major": "high",
+    "critical": "high",
+    "high": "high",
+    "中": "medium",
+    "中等": "medium",
+    "中等影响": "medium",
+    "高": "high",
+    "高风险": "high",
+    "破坏性": "high",
+}
+
+
+def normalize_impact(value: Any) -> str:
+    """把模型常见的影响面写法归一化为 low/medium/high。"""
+    text = str(value or "").strip().lower()
+    if text in VALID_IMPACT_LEVELS:
+        return text
+    if text in _IMPACT_ALIASES:
+        return _IMPACT_ALIASES[text]
+    # 描述性影响面按中等风险处理，进入人工审批而不是直接失败。
+    return "medium"
 
 
 def _propose_edit(ctx: ToolContext, item: Any = None, **kwargs: Any) -> dict[str, Any]:
