@@ -65,6 +65,7 @@ class MigrationConfig:
 class VerificationConfig:
     enabled: bool = False
     timeout_seconds: int = 120
+    target_python: str = ""
     required_files: list[str] = field(default_factory=list)
     required_packages: list[str] = field(default_factory=list)
     import_modules: list[str] = field(default_factory=list)
@@ -217,6 +218,7 @@ def _build_verification_config(section: dict[str, Any]) -> VerificationConfig:
     return VerificationConfig(
         enabled=bool(_get(section, "enabled", False)),
         timeout_seconds=int(_get(section, "timeout_seconds", 120)),
+        target_python=str(_get(section, "target_python", "") or ""),
         required_files=[str(item) for item in required_files],
         required_packages=[str(item) for item in required_packages],
         import_modules=[str(item) for item in import_modules],

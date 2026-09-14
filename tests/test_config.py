@@ -29,6 +29,7 @@ class ConfigFallbackTests(unittest.TestCase):
     def test_default_verification_config(self):
         config = load_config("config.example.yaml")
         self.assertFalse(config.verification.enabled)
+        self.assertEqual(config.verification.target_python, "")
         self.assertEqual(config.verification.required_files, [])
         self.assertEqual(config.verification.required_packages, [])
         self.assertEqual(config.verification.import_modules, [])
@@ -41,6 +42,23 @@ class ConfigFallbackTests(unittest.TestCase):
             config.guardrails.allowed_output_entries,
             list(DEFAULT_ALLOWED_OUTPUT_ENTRIES),
         )
+
+    def test_loads_target_python(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "config.yaml"
+            path.write_text(
+                "guardrails:\n"
+                "  allowed_tools:\n"
+                "    - scan_files\n"
+                "verification:\n"
+                "  target_python: C:\\target\\.venv\\Scripts\\python.exe\n",
+                encoding="utf-8",
+            )
+            config = load_config(path)
+            self.assertEqual(
+                config.verification.target_python,
+                "C:\\target\\.venv\\Scripts\\python.exe",
+            )
 
 
 if __name__ == "__main__":

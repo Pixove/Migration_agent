@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 from agent.config import VerificationConfig, load_config
 from agent.guardrails import GuardrailError, PathGuard
@@ -201,6 +202,45 @@ class VerifierTests(unittest.TestCase):
             self.assertIn(
                 "缺少 -c/-m 或脚本路径",
                 result.checks[0].message,
+            )
+
+    def test_behavior_uses_target_python_for_checks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = VerificationConfig(
+                enabled=True,
+                target_python=sys.executable,
+                required_packages=["PyYAML"],
+                import_modules=["sys"],
+            )
+            completed = type(
+                "Completed",
+                (),
+                {"returncode": 0, "stdout": "", "stderr": ""},
+            )()
+            with patch(
+                "tools.verifier.subprocess.run",
+                return_value=completed,
+            ) as mocked:
+                result = run_behavior_verification(tmp, config)
+
+            self.assertTrue(result.success)
+            self.assertEqual(
+                [call.args[0][0] for call in mocked.call_args_list],
+                [sys.executable, sys.executable],
+            )
+
+    def test_behavior_rejects_missing_target_python(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = VerificationConfig(
+                enabled=True,
+                target_python=str(Path(tmp) / "missing-python.exe"),
+                import_modules=["sys"],
+            )
+            result = run_behavior_verification(tmp, config)
+            self.assertFalse(result.success)
+            self.assertEqual(result.checks[0].name, "python:target")
+            self.assertFalse(
+                any(check.name == "import:sys" for check in result.checks)
             )
 
 

@@ -210,6 +210,10 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="端到端评估后执行的行为验证命令，可多次指定",
     )
+    parser.add_argument(
+        "--e2e-target-python",
+        help="端到端评估后用于依赖和导入检查的目标 Python 解释器",
+    )
     args = parser.parse_args(argv)
 
     state: dict | None = None
@@ -251,6 +255,10 @@ def main(argv: list[str] | None = None) -> int:
         report["quality"] = run_quality_evals(args.quality_output)
     if args.e2e:
         e2e_config = load_config("config.yaml")
+        if args.e2e_target_python:
+            e2e_config.verification.enabled = True
+            e2e_config.verification.target_python = args.e2e_target_python
+            e2e_config.verification.fail_on_error = False
         if args.e2e_command:
             e2e_config.verification.enabled = True
             e2e_config.verification.commands = list(args.e2e_command)

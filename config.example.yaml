@@ -130,11 +130,14 @@ verification:
   enabled: false
   # 单条验证超时时间
   timeout_seconds: 120
+  # 可选：目标项目 Python 解释器；用于依赖和 import 检查
+  # 留空时使用运行迁移工具的当前 Python
+  target_python: ""
   # 输出目录中必须存在的文件（相对路径）
   required_files: []
-  # 当前 Python 环境中必须安装的依赖包（当前 .venv）
+  # target_python 环境中必须安装的依赖包；target_python 为空时使用当前 .venv
   required_packages: []
-  # 使用当前 Python 解释器执行 import 检查（当前 .venv）
+  # 使用 target_python 执行 import 检查；target_python 为空时使用当前 .venv
   import_modules: []
   # 在输出目录中执行的白名单命令；可指定目标项目解释器
   commands: []

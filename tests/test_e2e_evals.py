@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -93,6 +94,7 @@ class E2EEvalTests(unittest.TestCase):
         config = SimpleNamespace(
             verification=SimpleNamespace(
                 enabled=False,
+                target_python="",
                 commands=[],
                 fail_on_error=True,
             )
@@ -116,10 +118,19 @@ class E2EEvalTests(unittest.TestCase):
             return_value=Path("eval.json"),
         ):
             code = eval_run.main(
-                ["--e2e", "--e2e-source", "examples/semantic_big_demo"]
+                [
+                    "--e2e",
+                    "--e2e-source",
+                    "examples/semantic_big_demo",
+                    "--e2e-target-python",
+                    sys.executable,
+                ]
             )
         self.assertEqual(code, 0)
         self.assertTrue(mocked.called)
+        self.assertEqual(config.verification.target_python, sys.executable)
+        self.assertTrue(config.verification.enabled)
+        self.assertFalse(config.verification.fail_on_error)
 
 
 if __name__ == "__main__":

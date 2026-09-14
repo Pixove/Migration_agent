@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import ast
+import os
 import re
 import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
-from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -73,28 +73,58 @@ def run_behavior_verification(
 
     checks: list[CheckResult] = []
     timeout = max(1, int(config.timeout_seconds))
+    python_executable, target_check = _resolve_python_executable(config)
+    if target_check is not None:
+        checks.append(target_check)
 
     for file_name in config.required_files:
         checks.append(_check_required_file(root, str(file_name)))
 
-    for package in config.required_packages:
-        checks.append(_check_required_package(str(package)))
-
-    for module in config.import_modules:
-        name = f"import:{module}"
-        if not _MODULE_NAME_RE.match(str(module)):
+    if config.required_packages:
+        if python_executable is None:
             checks.append(
-                CheckResult(name, False, f"非法模块名: {module}")
+                CheckResult(
+                    "packages",
+                    False,
+                    "target_python 不可用，未执行依赖检查",
+                )
             )
-            continue
-        checks.append(
-            _run_command_check(
-                name,
-                [sys.executable, "-c", f"import {module}"],
-                cwd=root,
-                timeout=timeout,
+        else:
+            for package in config.required_packages:
+                checks.append(
+                    _check_required_package(
+                        str(package),
+                        python_executable,
+                        cwd=root,
+                        timeout=timeout,
+                    )
+                )
+
+    if config.import_modules:
+        if python_executable is None:
+            checks.append(
+                CheckResult(
+                    "imports",
+                    False,
+                    "target_python 不可用，未执行导入检查",
+                )
             )
-        )
+        else:
+            for module in config.import_modules:
+                name = f"import:{module}"
+                if not _MODULE_NAME_RE.match(str(module)):
+                    checks.append(
+                        CheckResult(name, False, f"非法模块名: {module}")
+                    )
+                    continue
+                checks.append(
+                    _run_command_check(
+                        name,
+                        [python_executable, "-c", f"import {module}"],
+                        cwd=root,
+                        timeout=timeout,
+                    )
+                )
 
     for command in config.commands:
         parts = _split_command(str(command))
@@ -147,16 +177,43 @@ def _check_required_file(root: Path, name: str) -> CheckResult:
     return CheckResult(f"file:{name}", True)
 
 
-def _check_required_package(name: str) -> CheckResult:
-    try:
-        version = metadata.version(name)
-    except metadata.PackageNotFoundError:
-        return CheckResult(
-            f"package:{name}",
-            False,
-            "依赖包未安装",
+def _resolve_python_executable(
+    config: Any,
+) -> tuple[str | None, CheckResult | None]:
+    configured = str(getattr(config, "target_python", "") or "").strip()
+    if not configured:
+        return sys.executable, None
+
+    target = Path(os.path.expandvars(configured)).expanduser()
+    if not target.is_file():
+        return (
+            None,
+            CheckResult(
+                "python:target",
+                False,
+                f"目标解释器不存在: {target}",
+            ),
         )
-    return CheckResult(f"package:{name}", True, f"版本 {version}")
+    return str(target), CheckResult("python:target", True, str(target))
+
+
+def _check_required_package(
+    name: str,
+    python_executable: str,
+    *,
+    cwd: Path,
+    timeout: int,
+) -> CheckResult:
+    code = (
+        "from importlib import metadata; "
+        f"print(metadata.version({name!r}))"
+    )
+    return _run_command_check(
+        f"package:{name}",
+        [python_executable, "-c", code],
+        cwd=cwd,
+        timeout=timeout,
+    )
 
 
 def _split_command(command: str) -> list[str]:
