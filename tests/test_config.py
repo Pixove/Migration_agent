@@ -29,6 +29,8 @@ class ConfigFallbackTests(unittest.TestCase):
     def test_default_verification_config(self):
         config = load_config("config.yaml")
         self.assertFalse(config.verification.enabled)
+        self.assertEqual(config.verification.required_files, [])
+        self.assertEqual(config.verification.required_packages, [])
         self.assertEqual(config.verification.import_modules, [])
         self.assertEqual(config.verification.commands, [])
         self.assertTrue(config.verification.fail_on_error)

@@ -144,6 +144,23 @@ class VerifierTests(unittest.TestCase):
             result = run_behavior_verification(tmp, config)
             self.assertTrue(result.success)
 
+    def test_behavior_required_files_and_packages(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "app.py").write_text("x = 1\n", encoding="utf-8")
+            config = VerificationConfig(
+                enabled=True,
+                required_files=["app.py", "missing.py", "../outside.py"],
+                required_packages=["PyYAML", "missing_package_xyz"],
+            )
+            result = run_behavior_verification(tmp, config)
+            self.assertFalse(result.success)
+            checks = {check.name: check.ok for check in result.checks}
+            self.assertTrue(checks["file:app.py"])
+            self.assertFalse(checks["file:missing.py"])
+            self.assertFalse(checks["file:../outside.py"])
+            self.assertTrue(checks["package:PyYAML"])
+            self.assertFalse(checks["package:missing_package_xyz"])
+
 
 class ReporterTests(unittest.TestCase):
     def test_write_report(self):

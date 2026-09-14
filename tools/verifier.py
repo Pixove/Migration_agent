@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import sys
 from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,12 @@ def run_behavior_verification(
     checks: list[CheckResult] = []
     timeout = max(1, int(config.timeout_seconds))
 
+    for file_name in config.required_files:
+        checks.append(_check_required_file(root, str(file_name)))
+
+    for package in config.required_packages:
+        checks.append(_check_required_package(str(package)))
+
     for module in config.import_modules:
         name = f"import:{module}"
         if not _MODULE_NAME_RE.match(str(module)):
@@ -111,6 +118,36 @@ def run_behavior_verification(
         success=all(check.ok for check in checks),
         checks=checks,
     )
+
+
+def _check_required_file(root: Path, name: str) -> CheckResult:
+    raw = Path(name)
+    if raw.is_absolute() or ".." in raw.parts:
+        return CheckResult(
+            f"file:{name}",
+            False,
+            "必需文件必须是输出目录内的相对路径",
+        )
+    target = (root / raw).resolve()
+    try:
+        target.relative_to(root.resolve())
+    except ValueError:
+        return CheckResult(f"file:{name}", False, "文件路径越界")
+    if not target.is_file():
+        return CheckResult(f"file:{name}", False, "文件不存在")
+    return CheckResult(f"file:{name}", True)
+
+
+def _check_required_package(name: str) -> CheckResult:
+    try:
+        version = metadata.version(name)
+    except metadata.PackageNotFoundError:
+        return CheckResult(
+            f"package:{name}",
+            False,
+            "依赖包未安装",
+        )
+    return CheckResult(f"package:{name}", True, f"版本 {version}")
 
 
 def _split_command(command: str) -> list[str]:

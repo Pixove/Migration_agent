@@ -123,6 +123,10 @@ verification:
   enabled: false
   # 单条验证超时时间
   timeout_seconds: 120
+  # 输出目录中必须存在的文件（相对路径）
+  required_files: []
+  # 当前 Python 环境中必须安装的依赖包
+  required_packages: []
   # 在输出目录中使用当前 Python 解释器执行 import 检查
   import_modules: []
   # 在输出目录中执行的白名单命令（不会经过 shell）

@@ -59,6 +59,8 @@ class MigrationConfig:
 class VerificationConfig:
     enabled: bool = False
     timeout_seconds: int = 120
+    required_files: list[str] = field(default_factory=list)
+    required_packages: list[str] = field(default_factory=list)
     import_modules: list[str] = field(default_factory=list)
     commands: list[str] = field(default_factory=list)
     fail_on_error: bool = True
@@ -191,8 +193,14 @@ def _build_migration_config(section: dict[str, Any]) -> MigrationConfig:
 
 
 def _build_verification_config(section: dict[str, Any]) -> VerificationConfig:
+    required_files = _get(section, "required_files", [])
+    required_packages = _get(section, "required_packages", [])
     import_modules = _get(section, "import_modules", [])
     commands = _get(section, "commands", [])
+    if not isinstance(required_files, list):
+        raise ConfigError("verification.required_files 必须是列表")
+    if not isinstance(required_packages, list):
+        raise ConfigError("verification.required_packages 必须是列表")
     if not isinstance(import_modules, list):
         raise ConfigError("verification.import_modules 必须是列表")
     if not isinstance(commands, list):
@@ -200,6 +208,8 @@ def _build_verification_config(section: dict[str, Any]) -> VerificationConfig:
     return VerificationConfig(
         enabled=bool(_get(section, "enabled", False)),
         timeout_seconds=int(_get(section, "timeout_seconds", 120)),
+        required_files=[str(item) for item in required_files],
+        required_packages=[str(item) for item in required_packages],
         import_modules=[str(item) for item in import_modules],
         commands=[str(item) for item in commands],
         fail_on_error=bool(_get(section, "fail_on_error", True)),
