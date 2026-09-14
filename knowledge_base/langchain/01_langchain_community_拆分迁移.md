@@ -49,6 +49,29 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_huggingface import HuggingFaceEmbeddings
 ```
 
+`HuggingFaceBgeEmbeddings` 在新版 `langchain_huggingface` 中没有独立导出。
+最小兼容迁移可使用兼容别名：
+
+```python
+# Before
+from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+
+# After
+from langchain_huggingface import HuggingFaceEmbeddings as HuggingFaceBgeEmbeddings
+```
+
+如果允许同时调整调用参数，推荐直接使用 `HuggingFaceEmbeddings`，并为 BGE
+模型显式配置归一化：
+
+```python
+from langchain_huggingface import HuggingFaceEmbeddings
+
+embeddings = HuggingFaceEmbeddings(
+    model_name="BAAI/bge-small-zh-v1.5",
+    encode_kwargs={"normalize_embeddings": True},
+)
+```
+
 ```python
 # Before
 from langchain_community.embeddings import OllamaEmbeddings
@@ -81,6 +104,14 @@ from langchain_community.llms import Ollama
 
 # After
 from langchain_ollama import OllamaLLM
+```
+
+```python
+# Before
+from langchain_community.llms import Anthropic
+
+# After
+from langchain_anthropic import AnthropicLLM
 ```
 
 ## 依赖包对照
@@ -134,6 +165,6 @@ result = chain.invoke({"question": question})
 
 ## 相关规则
 
-- `migration/rules/langchain_community.yaml`：Community 导入迁移规则；
+- `migration/rules/profiles/langchain_community.yaml`：Community 导入迁移规则；
 - `migration/rules/api_rules.yaml`：通用 Python 废弃 API 规则；
 - `rules/README.md`：Agent 行为规则入口。

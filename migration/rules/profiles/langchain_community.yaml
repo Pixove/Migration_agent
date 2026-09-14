@@ -61,8 +61,8 @@ rules:
     type: from_import
     module: langchain_community.embeddings
     name: HuggingFaceBgeEmbeddings
-    replacement: from langchain_huggingface import HuggingFaceBgeEmbeddings
-    message: HuggingFaceBgeEmbeddings 已迁移到 langchain_huggingface
+    replacement: from langchain_huggingface import HuggingFaceEmbeddings as HuggingFaceBgeEmbeddings
+    message: HuggingFaceBgeEmbeddings 使用 HuggingFaceEmbeddings 兼容别名，建议复核 BGE 归一化参数
     docs: langchain_community_upgrade
     package: langchain_community
     severity: medium
@@ -149,8 +149,8 @@ rules:
     type: from_import
     module: langchain_community.llms
     name: Anthropic
-    replacement: from langchain_anthropic import Anthropic
-    message: Anthropic 已迁移到 langchain_anthropic
+    replacement: from langchain_anthropic import AnthropicLLM
+    message: Anthropic 已迁移到 langchain_anthropic.AnthropicLLM
     docs: langchain_community_upgrade
     package: langchain_community
     severity: medium

@@ -25,6 +25,7 @@ class LangChainDemoTests(unittest.TestCase):
             rules_path=rules_path,
         )
         apis = {signal["api"] for signal in signals}
+        by_api = {signal["api"]: signal for signal in signals}
         self.assertGreaterEqual(len(signals), 15)
         self.assertIn(
             "langchain_community.vectorstores.Chroma",
@@ -37,6 +38,19 @@ class LangChainDemoTests(unittest.TestCase):
         self.assertIn(
             "langchain_community.chat_models.ChatOllama",
             apis,
+        )
+        self.assertEqual(
+            by_api["langchain_community.llms.Anthropic"]["replacement"],
+            "from langchain_anthropic import AnthropicLLM",
+        )
+        self.assertEqual(
+            by_api[
+                "langchain_community.embeddings.HuggingFaceBgeEmbeddings"
+            ]["replacement"],
+            (
+                "from langchain_huggingface import HuggingFaceEmbeddings "
+                "as HuggingFaceBgeEmbeddings"
+            ),
         )
 
 
