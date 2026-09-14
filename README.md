@@ -1,24 +1,19 @@
 # Migration Agent
 
-企业级代码库现代化迁移 Agent。用户通过命令行指定两条路径：待迁移的
-遗留项目路径（只读）与迁移后输出路径（唯一可写区域）。迁移方案由
-大模型生成，harness 负责校验、执行、验证与审计。
+企业级代码库现代化迁移 Agent。用户通过双路径 CLI 指定待迁移项目
+（只读）和输出目录（唯一可写），由 LLM 生成迁移方案，harness 负责
+校验、执行、验证、回滚与审计。
 
-## 功能特性
+## 核心能力
 
-- 双路径 CLI，输入项目只读，输出目录唯一可写；
-- 大模型生成迁移计划，支持 OpenAI 兼容服务与 Ollama；
-- RAG 混合检索：BM25 精确匹配 + 向量语义检索 + Cross-Encoder 重排；
-- 按档案与主题组织的内置知识库；
-- 工具白名单、路径沙箱、预算限制、影响面审批；
-- 30% 大规模重构阈值，超限必须用户同意；
-- 计划证据强制关联检索命中，禁止无依据修改；
-- 迁移档案与转换规则（py2to3 正则 / py3_upgrade AST）；
-- 语义编辑模式：LLM 生成 diff，自动评审 + 人工审批；
-- 评估系统：检索、迁移、Agentic 编排、语义编辑四类指标；
-- Agentic 按需读取 rules/skills，节省上下文；
-- 支持从知识文档生成候选 API 规则与档案定义，人工确认后启用；
-- 验证失败自动回滚，可选行为验证（import/测试命令），完整审计与中文报告。
+- Python 2→3、Python 3.x 升级和 LangChain Community 包拆分迁移；
+- RAG 混合检索：BM25 + 向量语义检索 + Cross-Encoder 重排；
+- Agentic 与固定流水线两种运行模式；
+- 证据校验、路径沙箱、工具白名单、预算和人工审批；
+- 语义编辑、自动评审、AST 验证和失败回滚；
+- 规则表与迁移档案数据驱动，可按生态扩展；
+- 支持从知识文档生成候选规则和候选档案；
+- 检索、迁移、Agentic、编辑、规则覆盖和端到端质量评估。
 
 ## 快速开始
 
@@ -30,117 +25,52 @@ python -m venv .venv
 Copy-Item config.example.yaml config.yaml
 ```
 
-`requirements.txt` 安装的是运行时基础依赖（配置解析、HTTP、向量存储与
-Embedding 模型）。另外有两个按需启用的能力：
-
-- 向量语义检索与 Cross-Encoder 重排：默认关闭。在 `config.yaml` 中把
-  `retrieval.vector.enabled` 与 `retrieval.rerank.enabled` 设为 `true`
-  后启用，用于从知识库中按语义召回迁移范例并重排 Top-K 结果。首次运行
-  会自动下载本地模型（embedding 与 Cross-Encoder），模型未缓存或加载
-  失败时自动降级为纯 BM25 检索。
-- PDF 文档解析：知识库导入 PDF 最佳实践文档时使用。执行
-  `pip install pypdf` 后即可把 PDF 传入 `--docs`；未安装时若导入来源
-  包含 PDF，会提示安装命令并中止该次导入，TXT/Markdown 不受影响。
+向量检索和重排默认关闭；PDF 解析需要额外安装 `pypdf`。
+依赖说明见 `docs/03_配置说明.md`。
 
 ### 2. 配置大模型
 
-编辑 `config.yaml` 中的 `llm` 段：
-
-- `provider: openai`：任意 OpenAI 兼容服务；
-- `provider: ollama`：本地 Ollama；
-
-API Key 通过环境变量提供，不写入配置文件：
+编辑 `config.yaml` 的 `llm` 段，支持 OpenAI 兼容服务与 Ollama。
+API Key 通过环境变量提供：
 
 ```powershell
 $env:OPENAI_API_KEY = "你的密钥"
 ```
 
+DeepSeek 等 OpenAI 兼容服务可直接修改 `base_url`、`api_key_env` 和
+`model`，具体示例见 `docs/03_配置说明.md`。
+
 ### 3. 运行迁移
 
-对话引导模式（推荐，无需在命令行传入路径）：
-
-```powershell
-.venv\Scripts\python.exe main.py --chat
-```
-
-`--chat` 会依次询问迁移目标、输入项目路径与输出路径，并汇总确认后再执行，
-因此不需要 `--source` 与 `--output`。与自主决策模式组合：
+对话引导模式，不需要在命令行传路径：
 
 ```powershell
 .venv\Scripts\python.exe main.py --chat --agentic
 ```
 
-支持的迁移目标示例（“这次迁移的目标是什么？”时可直接这样说）：
-
-- `把项目从 Python 2 迁移到 Python 3`：使用 `py2to3` 档案，修复基础语法；
-- `升级到更高的 Python 3.x 版本`：使用 `py3_upgrade` 档案，处理新语法；
-- `升级 Python 并修复废弃 API`：使用 `py3_upgrade` 档案，处理
-  `distutils`、`imp`、`datetime.utcnow` 等废弃 API；
-- `升级 LangChain Community 废弃 API`：使用 `langchain_community` 档案，
-  处理 Chroma、HuggingFace、Ollama、OpenAI 等集成包拆分；
-- 暂不支持 Django、Flask 等 Web 框架升级，回答涉及框架时会被要求重新描述。
-
-普通交互模式（命令行仍可省略路径，程序逐个提示输入）：
+也可以显式指定路径和档案：
 
 ```powershell
-.venv\Scripts\python.exe main.py
+.venv\Scripts\python.exe main.py `
+  --source D:\legacy `
+  --output D:\migrated `
+  --profile py3_upgrade `
+  --scope deprecated_api `
+  --agentic
 ```
 
-完整模式（内置知识库 + 大模型）：
-
-```powershell
-.venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --docs knowledge_base/py2to3
-```
-
-不使用大模型（回退为原样复制）：
+不使用大模型时回退为原样复制：
 
 ```powershell
 .venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --no-llm
 ```
 
-## 示例项目
+`--chat` 支持的迁移目标示例：
 
-仓库内置一个多模块 Python 2 遗留示例项目，用于测试迁移效果：
-
-```text
-examples/legacy_demo/
-├─ main.py               # 订单系统入口
-├─ models/               # 商品与订单模型
-├─ services/             # 折扣计算与报表
-├─ utils/                # 数据加载与工具函数
-└─ data/products.txt     # 商品数据
-```
-
-迁移示例项目：
-
-```powershell
-.venv\Scripts\python.exe main.py --source examples\legacy_demo --output D:\demo_migrated --docs knowledge_base/py2to3
-```
-
-迁移完成后在输出目录运行：
-
-```powershell
-cd D:\demo_migrated
-D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
-```
-
-另有 Python 3.8 风格升级示例 `examples/py38_demo/`：
-
-```powershell
-.venv\Scripts\python.exe main.py --source examples\py38_demo --output D:\py38_migrated --docs knowledge_base/py3_upgrade
-```
-
-迁移完成后在输出目录运行 `main.py` 验证。
-
-大型语义编辑示例 `examples/semantic_big_demo/`（300+ 行，15 个文件，
-20 个 `__del__` / `utcnow` / `utcfromtimestamp` 信号）：
-
-```powershell
-.venv\Scripts\python.exe main.py --source examples\semantic_big_demo --output D:\big_migrated --agentic
-```
-
-LangChain Community 迁移示例 `examples/langchain_legacy/` 用于验证
-Community 集成包拆分规则，说明见 `examples/langchain_legacy/README.md`。
+- Python 2 迁移到 Python 3；
+- Python 3.x 升级；
+- 修复废弃 API；
+- 升级 LangChain Community 的导入与废弃 API。
 
 ## CLI 参数
 
@@ -149,184 +79,82 @@ Community 集成包拆分规则，说明见 `examples/langchain_legacy/README.md
 | `--source` | 待迁移项目路径，必须是目录 |
 | `--output` | 迁移输出路径 |
 | `--config` | 配置文件路径，默认 `config.yaml` |
-| `--docs` | 最佳实践文档路径，文件或目录，可多次指定 |
-| `--no-llm` | 不使用大模型，使用回退复制计划 |
-| `--auto-approve` | 跳过 `medium/high` 计划审批 |
-| `--chat` | 使用对话引导模式确认迁移目标与路径，无需传入 `--source`/`--output` |
-| `--agentic` | 使用 LLM 工具决策循环，让模型自主调用工具 |
-| `--profile` | 指定迁移档案，覆盖 `config.yaml`，可选值见 `migration/profile_defs/` |
-| `--scope` | 指定迁移范围，覆盖 `config.yaml`，必须属于档案的 `scopes` |
+| `--docs` | 追加知识文档，文件或目录，可多次指定 |
+| `--profile` | 指定迁移档案，覆盖配置文件 |
+| `--scope` | 指定迁移范围，覆盖配置文件 |
+| `--chat` | 对话引导模式，无需传入输入/输出路径 |
+| `--agentic` | LLM 自主工具决策循环 |
+| `--auto-approve` | 跳过 `medium/high` 人工审批 |
+| `--no-llm` | 使用回退复制计划 |
 
 ## 工作流程
 
 ```text
-初始化护栏 → 扫描输入项目 → 导入知识库并检索
-→ LLM 生成计划 → 校验与审批 → 应用补丁 → 验证 → 报告
+扫描 → 检索 → 规划 → 审批 → 应用 → 验证 → 报告
 ```
 
-关键约束：
+固定流水线使用 `MigrationRunner`；`--agentic` 使用 `AgenticRunner`，
+由模型按需调用白名单工具。架构和状态机见 `docs/01_总体架构.md`、
+`docs/02_Agent状态机.md`。
 
-- 工具必须位于白名单，按名调用并计入调用次数；
-- `low` 影响自动应用，`medium/high` 需要人工审批；
-- 每条修改计划必须引用知识库检索命中；
-- `transform` 涉及代码量超过 30% 时必须用户同意；
-- 语义编辑必须 `propose_edit → 自动评审 → 人工审批 → apply_edit`；
-- Python 输出文件必须通过 AST 验证，失败自动回滚。
+## 示例项目
 
-## 运行模式
+以下命令省略 `.venv\Scripts\python.exe` 前缀。
 
-- 默认模式：固定流水线，扫描 → 检索 → 规划 → 应用 → 验证 → 报告；
-- `--chat`：先对话确认迁移目标、路径与范围，再开始；
-- `--agentic`：LLM 自主决策循环，模型按需调用白名单工具；
-- `--chat --agentic`：对话确认后进入自主执行。
+| 示例 | 用途 | 命令 |
+| --- | --- | --- |
+| `examples/legacy_demo` | Python 2→3 多模块项目 | `main.py --source examples\legacy_demo --output D:\demo_migrated --docs knowledge_base/py2to3` |
+| `examples/py38_demo` | Python 3.8 风格升级 | `main.py --source examples\py38_demo --output D:\py38_migrated --docs knowledge_base/py3_upgrade` |
+| `examples/semantic_big_demo` | 语义编辑与信号修复 | `main.py --source examples\semantic_big_demo --output D:\big_migrated --agentic` |
+| `examples/langchain_legacy` | LangChain Community 包拆分 | 见 `examples/langchain_legacy/README.md` |
 
-`--agentic` 依赖大模型，不能与 `--no-llm` 同时使用。
+## 知识库与规则
 
-## 语义编辑与评审
+- 知识库目录与 `--docs` 用法见 `knowledge_base/README.md`；
+- API 规则字段、匹配类型和扩展示例见 `migration/rules/README.md`；
+- 迁移档案定义与新增方式见 `migration/profile_defs/README.md`；
+- Agent 行为规则和红线见 `rules/README.md`。
 
-固定规则只能处理语法与废弃 API；内存泄漏、并发、框架升级这类语义问题
-由 LLM 生成结构化编辑，harness 负责把关。
-
-```text
-propose_edit（生成 diff 预览，不写文件）
-→ 自动评审（检查范围/证据/无关改动，失败即拒绝）
-→ 人工审批（medium/high）
-→ apply_edit（写入输出目录）
-→ 验证回滚
-```
-
-## 知识库
-
-内置知识库位于 `knowledge_base/`，按“档案 + 主题”组织：
-
-`py2to3/` 覆盖：
-
-- Python 2 到 3 语法迁移；
-- 字符串与字节处理；
-- 异常处理迁移；
-- 标准库变更；
-
-`py3_upgrade/` 覆盖：
-
-- 废弃 API 升级（distutils、imp、datetime.utcnow 等）；
-- Python 3.11+ 性能与新语法。
-
-`langchain/` 覆盖：
-
-- LangChain Community 集成拆分到独立包；
-- Chroma、PGVector、HuggingFace、Ollama、OpenAI、Anthropic 等迁移；
-- 导入路径、依赖更新与 LCEL 复杂迁移的人工确认提示。
-
-`topics/` 覆盖通用最佳实践（所有档案自动加载）：
-
-- 并发安全最佳实践；
-- 内存泄漏修复指南；
-- 迁移风险评估与控制；
-- 验证与回滚最佳实践；
-- 测试迁移正确性。
-
-未传 `--docs` 时，主循环自动加载当前档案目录 + `topics/`。
-传入 `--docs` 会在此基础上追加文档，不会覆盖档案默认知识库。
-
-可追加自定义文档：
+## 测试与评估
 
 ```powershell
-.venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --docs D:\docs\company-standard
-```
-
-知识库缓存目录由 `config.yaml` 的 `retrieval.kb_dir` 配置，默认 `kb/`，
-已被 `.gitignore` 忽略。
-
-可迁移 API 信号由 `migration/rules/*.yaml` 规则表驱动，支持
-`function_def`、`call`、`attribute`、`module`、`from_import` 五类规则。
-规则字段、匹配语义、校验方式与扩展示例见
-`migration/rules/README.md`。
-
-## 输出与审计
-
-迁移输出位于输出目录，审计数据位于：
-
-```text
-输出目录/
-└─ .migration-agent/
-   ├─ state.json    # 任务状态、计划条目、审计记录
-   ├─ audit.log     # 运行日志
-   └─ report.md     # 中文迁移报告
-```
-
-## 目录结构
-
-```text
-migration-agent/
-├─ main.py                  # CLI 入口
-├─ config.example.yaml      # 配置模板（入库）
-├─ config.yaml              # 本地配置（不入库）
-├─ agent/                   # 状态机、护栏、LLM 适配、调度、评审
-├─ tools/                   # 扫描、补丁、验证、报告
-├─ retrieval/               # 文档导入、BM25、向量、重排、知识库
-├─ migration/               # 迁移档案与转换规则（档案定义见 migration/profile_defs/README.md）
-├─ knowledge_base/          # 按档案与主题组织的内置迁移知识库
-├─ examples/                # 示例遗留项目与转换演示
-├─ evals/                   # 检索、迁移、Agentic、编辑评估
-├─ rules/                   # Agent 行为规则（见 rules/README.md）
-├─ skills/                  # 中文技能文档
-├─ docs/                    # 中文架构与调试文档
-└─ tests/                   # 单元测试
-```
-
-## 测试
-
-```bash
+# 单元测试
 .venv\Scripts\python.exe -m unittest discover tests -v
-```
 
-运行评估系统（检索、迁移、Agentic 编排、语义编辑四类指标）：
-
-```powershell
+# 默认评估
 .venv\Scripts\python.exe -m evals.run
-```
 
-评估不依赖 LLM API；完整报告保存到 `evals/reports/` 下，控制台只输出
-摘要。评估真实 Agentic 轨迹与编辑提案可传 `--state` 读取迁移审计：
-
-```powershell
-.venv\Scripts\python.exe -m evals.run --state D:\migrated\.migration-agent\state.json
-```
-
-对迁移输出目录执行质量评估：
-
-```powershell
+# 评估已有迁移输出
 .venv\Scripts\python.exe -m evals.run --quality-output D:\migrated
-```
 
-真实 LLM 端到端评估（需要 LLM API，CI 不运行）：
-
-```powershell
+# 真实 LLM 端到端评估（需要 LLM API）
 .venv\Scripts\python.exe -m evals.run --e2e --e2e-source examples\semantic_big_demo
 ```
 
-详细说明见 `docs/06_评估系统.md`。
+默认评估不依赖 LLM API；`--e2e` 需要 LLM API。结果保存到
+`evals/reports/`。详细说明见 `docs/06_评估系统.md`。
 
 ## CI
 
-GitHub Actions 会在推送和 Pull Request 时自动运行单元测试与评估系统，
-覆盖 Python 3.11、3.12、3.13。配置见 `.github/workflows/ci.yml`，
-详细说明见 `docs/07_CI.md`。
+GitHub Actions 在推送和 Pull Request 时运行单元测试与评估，覆盖
+Python 3.11、3.12、3.13。配置见 `.github/workflows/ci.yml`，说明见
+`docs/07_CI.md`。
 
 ## 文档入口
 
 - `AGENTS.md`：Agent 行为入口与文件索引；
-- `rules/README.md`：行为规则索引、优先级与红线；
-- `migration/profile_defs/README.md`：数据驱动档案定义与扩展示例；
-- `migration/rules/README.md`：API 规则字段、匹配类型与扩展示例；
-- `skills/`：技能使用说明；
-- `docs/`：架构、状态机、配置说明与调试排查。
+- `rules/README.md`：行为规则、优先级与红线；
+- `migration/profile_defs/README.md`：迁移档案定义；
+- `migration/rules/README.md`：API 迁移规则；
+- `knowledge_base/README.md`：知识库导入与缓存；
+- `docs/`：架构、状态机、配置、调试、评估和 CI；
+- `skills/`：具体能力的操作说明。
 
 ## 已知限制
 
-- `--source` 目前只接受项目目录，不支持单文件；
-- `transform` 规则为基础集，复杂语法仍需扩展；
-- 语义编辑依赖大模型生成与评审，无法离线生成；
-- 向量检索与重排需要本地缓存模型，未缓存时对应功能关闭；
-- PDF 解析依赖 `pypdf`，未安装时导入含 PDF 的来源会提示安装；
-- LLM 生成修改型计划需要知识库文档作为证据来源。
+- `--source` 只支持项目目录，不支持单文件；
+- 固定 transform 规则覆盖基础语法，复杂迁移依赖 Agentic 编辑；
+- 语义迁移依赖大模型，无法离线生成；
+- 向量检索和重排需要本地模型缓存；
+- PDF 解析依赖 `pypdf`；
+- 行为验证需要目标依赖已安装到运行环境。
