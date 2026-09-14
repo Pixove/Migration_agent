@@ -301,6 +301,12 @@ migration-agent/
 
 详细说明见 `docs/06_评估系统.md`。
 
+## CI
+
+GitHub Actions 会在推送和 Pull Request 时自动运行单元测试与评估系统，
+覆盖 Python 3.11、3.12、3.13。配置见 `.github/workflows/ci.yml`，
+详细说明见 `docs/07_CI.md`。
+
 ## 文档入口
 
 - `AGENTS.md`：Agent 行为入口与文件索引；
