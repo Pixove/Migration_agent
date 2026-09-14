@@ -47,6 +47,7 @@ class ToolContext:
     workspace: AuditWorkspace | None = None
     llm: LLMClient | None = None
     transform: Callable[[str, Any], str] | None = None
+    rules_paths: list[str | Path] | None = None
 
 
 def _scan_files(ctx: ToolContext, **kwargs: Any) -> list[dict[str, object]]:
@@ -99,7 +100,13 @@ def _propose_plan(
                     encoding="utf-8-sig",
                     errors="ignore",
                 )
-                signals.extend(scan_python_signals(text, file))
+                signals.extend(
+                    scan_python_signals(
+                        text,
+                        file,
+                        rules_path=ctx.rules_paths,
+                    )
+                )
             except Exception:
                 continue
     if ctx.llm is None:

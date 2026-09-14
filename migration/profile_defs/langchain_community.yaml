@@ -7,6 +7,8 @@ default_scope: deprecated_api
 knowledge_base:
   - knowledge_base/langchain
   - knowledge_base/topics
+rules:
+  - migration/rules/profiles/langchain_community.yaml
 keywords:
   - langchain
   - langchain community

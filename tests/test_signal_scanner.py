@@ -4,7 +4,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from migration.scan_signals import scan_python_signals
+from migration.registry import load_profile
+from migration.scan_signals import (
+    rules_paths_for_profile,
+    scan_python_signals,
+)
 
 
 class SignalScannerTests(unittest.TestCase):
@@ -137,14 +141,27 @@ class SignalScannerTests(unittest.TestCase):
                 {"legacy_a", "legacy_b.OldThing"},
             )
 
-    def test_default_rules_detect_langchain_community_import(self):
+    def test_profile_rules_detect_langchain_community_import(self):
         source = "from langchain_community.vectorstores import Chroma\n"
-        signals = scan_python_signals(source, "app.py")
+        rules_path = list(
+            rules_paths_for_profile(
+                load_profile("langchain_community").rules
+            )
+        )
+        signals = scan_python_signals(
+            source,
+            "app.py",
+            rules_path=rules_path,
+        )
         self.assertTrue(
             any(
                 signal["api"] == "langchain_community.vectorstores.Chroma"
                 for signal in signals
             )
+        )
+        self.assertEqual(
+            scan_python_signals(source, "app.py"),
+            [],
         )
 
     def test_invalid_rule_type_rejected(self):

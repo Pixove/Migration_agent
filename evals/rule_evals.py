@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from migration.scan_signals import scan_python_signals
+from migration.registry import load_profile
+from migration.scan_signals import (
+    rules_paths_for_profile,
+    scan_python_signals,
+)
 
 GOLDEN_FILE = Path(__file__).parent / "golden" / "rules.json"
 
@@ -19,6 +23,12 @@ def run_rule_evals(golden: dict | None = None) -> dict:
 
     for item in golden.get("cases", []):
         root = Path(item["path"])
+        profile_name = item.get("profile")
+        rules_paths = (
+            rules_paths_for_profile(load_profile(profile_name).rules)
+            if profile_name
+            else None
+        )
         detected: set[str] = set()
         files = (
             [root]
@@ -31,6 +41,7 @@ def run_rule_evals(golden: dict | None = None) -> dict:
             signals = scan_python_signals(
                 file.read_text(encoding="utf-8-sig", errors="ignore"),
                 file.as_posix(),
+                rules_path=list(rules_paths) if rules_paths else None,
             )
             detected.update(
                 str(signal.get("api", ""))

@@ -19,10 +19,15 @@ migration/rules/*.yaml
 
 ```text
 migration/rules/
-├─ api_rules.yaml
-├─ langchain_community.yaml
-└─ django_deprecations.yaml
+├─ api_rules.yaml                  # 全局规则，所有档案加载
+└─ profiles/
+   └─ langchain_community.yaml     # 档案专属规则，按需加载
 ```
+
+顶层 `*.yaml` 是所有档案共享的全局规则；`profiles/` 下的规则文件
+不会自动加载，必须由档案 YAML 的 `rules` 字段引用。例如
+`langchain_community.yaml` 档案只在自己的迁移任务中加载 LangChain
+规则，不会污染 `py2to3` 或 `py3_upgrade` 的信号检测。
 
 ## 字段说明
 

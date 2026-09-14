@@ -26,6 +26,7 @@ class MigrationProfile:
     transform: Callable[[str, Any], str] | None
     scopes: list[str]
     knowledge_base: list[str]
+    rules: list[str] = field(default_factory=list)
     keywords: list[str] = field(default_factory=list)
     default_scope: str = ""
     priority: int = 0
@@ -70,6 +71,7 @@ def _parse_profile(data: Any, path: Path) -> MigrationProfile:
     description = str(data.get("description", "")).strip()
     scopes = _string_list(data.get("scopes"))
     knowledge_base = _string_list(data.get("knowledge_base"))
+    rules = _string_list(data.get("rules"))
     if not name or not description or not scopes or not knowledge_base:
         raise ValueError(
             f"迁移档案缺少 name/description/scopes/knowledge_base: {path}"
@@ -98,6 +100,7 @@ def _parse_profile(data: Any, path: Path) -> MigrationProfile:
         transform=transform,
         scopes=scopes,
         knowledge_base=knowledge_base,
+        rules=rules,
         keywords=_string_list(data.get("keywords")),
         default_scope=default_scope,
         priority=int(data.get("priority", 0)),

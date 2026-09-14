@@ -15,11 +15,11 @@
 ## 扫描信号
 
 ```powershell
-.venv\Scripts\python.exe -c "from pathlib import Path; from migration.scan_signals import scan_python_signals; src=Path('examples/langchain_legacy/app.py'); print(scan_python_signals(src.read_text(encoding='utf-8'), 'app.py'))"
+.venv\Scripts\python.exe -c "from pathlib import Path; from migration.registry import load_profile; from migration.scan_signals import rules_paths_for_profile, scan_python_signals; src=Path('examples/langchain_legacy/app.py'); rules=list(rules_paths_for_profile(load_profile('langchain_community').rules)); print(scan_python_signals(src.read_text(encoding='utf-8'), 'app.py', rules_path=rules))"
 ```
 
 预期得到 15 个 `deprecated_api` 信号，每个信号包含原模块、符号名和
-建议迁移到的独立包。
+建议迁移到的独立包。这些规则只在 `langchain_community` 档案下加载。
 
 ## 迁移说明
 

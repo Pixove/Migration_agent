@@ -37,6 +37,11 @@ class ProfileRegistryTests(unittest.TestCase):
         langchain = profiles["langchain_community"]
         self.assertEqual(langchain.default_scope, "deprecated_api")
         self.assertIn("langchain", langchain.keywords)
+        self.assertEqual(
+            langchain.rules,
+            ["migration/rules/profiles/langchain_community.yaml"],
+        )
+        self.assertEqual(py3.rules, [])
         self.assertGreater(langchain.priority, py3.priority)
 
     def test_profiles_have_knowledge_base(self):

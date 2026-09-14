@@ -21,6 +21,7 @@
 | `scopes` | 是 | 支持的迁移范围，如 `syntax`、`deprecated_api` |
 | `default_scope` | 否 | 未明确范围时使用的默认值 |
 | `knowledge_base` | 是 | 默认加载的知识库目录列表 |
+| `rules` | 否 | 档案专属 API 规则文件，运行时叠加到全局规则 |
 | `keywords` | 否 | `--chat` 无模型时用于识别目标的关键词 |
 | `priority` | 否 | 关键词匹配优先级，数值越大越优先 |
 
@@ -38,6 +39,8 @@ default_scope: deprecated_api
 knowledge_base:
   - knowledge_base/pandas
   - knowledge_base/topics
+rules:
+  - migration/rules/profiles/pandas_upgrade.yaml
 keywords:
   - pandas
 priority: 20
@@ -50,7 +53,8 @@ priority: 20
 ## 与知识库、规则表的关系
 
 - `knowledge_base`：档案默认加载哪些知识文档；
-- `migration/rules/`：全局 API 扫描规则，所有档案共用；
+- `migration/rules/*.yaml`：全局 API 扫描规则，所有档案共用；
+- `rules`：档案专属规则文件，只在当前档案下叠加加载；
 - `--docs`：在档案默认知识库之外追加文档；
 - `--profile` / `--scope`：命令行覆盖配置中的档案与范围。
 

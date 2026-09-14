@@ -3,6 +3,7 @@
     {
       "name": "langchain_community_imports",
       "path": "examples/langchain_legacy",
+      "profile": "langchain_community",
       "expected": [
         "langchain_community.chat_models.ChatAnthropic",
         "langchain_community.chat_models.ChatGoogleGenerativeAI",
@@ -24,6 +25,7 @@
     {
       "name": "python3_semantic_signals",
       "path": "examples/semantic_big_demo",
+      "profile": "py3_upgrade",
       "expected": [
         "__del__",
         "datetime.utcnow",

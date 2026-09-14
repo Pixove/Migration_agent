@@ -19,7 +19,7 @@ from agent.state import AuditWorkspace, MigrationState, Phase, PlanItem
 from agent.tooling import ToolContext, register_tools
 from agent.review import review_edit
 from migration.registry import load_profile
-from migration.scan_signals import scan_python_signals
+from migration.scan_signals import rules_paths_for_profile, scan_python_signals
 from retrieval import HybridRetriever
 from retrieval.knowledge_base import KnowledgeBase
 from tools.patcher import apply_plan_item
@@ -148,6 +148,7 @@ class AgenticRunner:
             lambda item, diff: review_edit(self.llm, item, diff)
         )
         self.profile = load_profile(config.migration.profile)
+        self.rules_paths = list(rules_paths_for_profile(self.profile.rules))
         self.retriever: HybridRetriever | None = None
         self.ctx = ToolContext(
             config=self.config,
@@ -156,6 +157,7 @@ class AgenticRunner:
             workspace=self.workspace,
             llm=self.llm,
             transform=self.profile.transform,
+            rules_paths=self.rules_paths,
         )
         self.dispatcher = ToolDispatcher(self.tools, self.budget)
         register_tools(self.dispatcher, self.ctx)
@@ -1141,7 +1143,13 @@ class AgenticRunner:
                 encoding="utf-8-sig",
                 errors="ignore",
             )
-            signals.extend(scan_python_signals(text, file.relative_path))
+            signals.extend(
+                scan_python_signals(
+                    text,
+                    file.relative_path,
+                    rules_path=self.rules_paths,
+                )
+            )
         self.state.unresolved_signals = signals
         if signals:
             self.state.add_audit(
@@ -1315,7 +1323,13 @@ class AgenticRunner:
                 encoding="utf-8-sig",
                 errors="ignore",
             )
-            signals.extend(scan_python_signals(text, file.relative_path))
+            signals.extend(
+                scan_python_signals(
+                    text,
+                    file.relative_path,
+                    rules_path=self.rules_paths,
+                )
+            )
         return signals
 
     def _collect_expected_unresolved_signals(self) -> list[dict]:
@@ -1336,7 +1350,13 @@ class AgenticRunner:
                     encoding="utf-8-sig",
                     errors="ignore",
                 )
-            signals.extend(scan_python_signals(text, file.relative_path))
+            signals.extend(
+                scan_python_signals(
+                    text,
+                    file.relative_path,
+                    rules_path=self.rules_paths,
+                )
+            )
         return signals
 
     def _signals_after_edit(self, edit_item: dict, payload: Any) -> list[dict]:
@@ -1350,7 +1370,11 @@ class AgenticRunner:
             encoding="utf-8-sig",
             errors="ignore",
         )
-        return scan_python_signals(text, edit_item.get("file", ""))
+        return scan_python_signals(
+            text,
+            edit_item.get("file", ""),
+            rules_path=self.rules_paths,
+        )
 
     def _record_applied_item(
         self,

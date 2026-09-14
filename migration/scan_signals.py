@@ -19,6 +19,18 @@ VALID_RULE_TYPES = {
 }
 
 
+def rules_paths_for_profile(
+    profile_rules: list[str] | None = None,
+) -> tuple[Path, ...]:
+    """返回全局规则目录与档案专属规则的组合路径。"""
+    paths = [RULES_DIR]
+    for item in profile_rules or []:
+        path = Path(item)
+        if path not in paths:
+            paths.append(path)
+    return tuple(paths)
+
+
 @dataclass
 class CodeSignal:
     file: str
@@ -90,7 +102,9 @@ _BUILTIN_RULES: tuple[ApiRule, ...] = (
 
 
 @lru_cache(maxsize=16)
-def load_api_rules(path: str | Path | None = None) -> tuple[ApiRule, ...]:
+def load_api_rules(
+    path: str | Path | tuple[str | Path, ...] | None = None,
+) -> tuple[ApiRule, ...]:
     """加载并合并规则表；文件缺失或为空时回退到内置规则。"""
     rules_paths = _rule_files(path)
     if not rules_paths:
@@ -109,12 +123,21 @@ def load_api_rules(path: str | Path | None = None) -> tuple[ApiRule, ...]:
     return tuple(rules) or _BUILTIN_RULES
 
 
-def _rule_files(path: str | Path | None) -> list[Path]:
+def _rule_files(
+    path: str | Path | tuple[str | Path, ...] | None,
+) -> list[Path]:
     """规则路径为空时加载规则目录下的全部 YAML 文件。"""
     if path is None:
-        target = RULES_DIR
-    else:
-        target = Path(path)
+        return _expand_rule_path(RULES_DIR)
+    if isinstance(path, (list, tuple)):
+        files: list[Path] = []
+        for item in path:
+            files.extend(_expand_rule_path(Path(item)))
+        return list(dict.fromkeys(files))
+    return _expand_rule_path(Path(path))
+
+
+def _expand_rule_path(target: Path) -> list[Path]:
     if target.is_dir():
         return sorted(target.glob("*.yaml")) + sorted(target.glob("*.yml"))
     if target.is_file():
@@ -308,13 +331,15 @@ class _SignalVisitor(ast.NodeVisitor):
 def scan_python_signals(
     source_text: str,
     file: str,
-    rules_path: str | Path | None = None,
+    rules_path: str | Path | list[str | Path] | None = None,
 ) -> list[dict]:
     """按规则表扫描 Python 源码中的迁移信号。"""
     try:
         tree = ast.parse(source_text)
     except SyntaxError:
         return []
+    if isinstance(rules_path, list):
+        rules_path = tuple(rules_path)
     rules = load_api_rules(rules_path)
     visitor = _SignalVisitor(rules)
     visitor.visit(tree)
