@@ -13,6 +13,7 @@ from evals.edit_evals import (
     run_edit_evals,
 )
 from evals.migration_evals import run_migration_evals
+from evals.quality_evals import run_quality_evals
 from evals.retrieval_evals import run_retrieval_evals
 from evals.rule_evals import run_rule_evals
 from evals.run import (
@@ -45,6 +46,35 @@ class RuleEvalTests(unittest.TestCase):
         self.assertTrue(
             all(not case["missing"] for case in report["cases"])
         )
+
+
+class QualityEvalTests(unittest.TestCase):
+    def test_quality_reports_syntax_failures(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "ok.py").write_text("x = 1\n", encoding="utf-8")
+            (root / "bad.py").write_text(
+                "def broken(:\n",
+                encoding="utf-8",
+            )
+            config = load_config("config.yaml")
+            report = run_quality_evals(root, config)
+            self.assertEqual(report["python_files"], 2)
+            self.assertEqual(report["syntax_passed"], 1)
+            self.assertEqual(report["syntax_pass_rate"], 0.5)
+            self.assertFalse(report["overall_success"])
+
+    def test_quality_runs_behavior_checks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("x = 1\n", encoding="utf-8")
+            config = load_config("config.yaml")
+            config.verification.enabled = True
+            config.verification.import_modules = ["sys"]
+            report = run_quality_evals(root, config)
+            self.assertEqual(report["syntax_pass_rate"], 1.0)
+            self.assertTrue(report["behavior"]["success"])
+            self.assertTrue(report["overall_success"])
 
 
 class AgenticEvalTests(unittest.TestCase):

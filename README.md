@@ -293,6 +293,12 @@ migration-agent/
 .venv\Scripts\python.exe -m evals.run --state D:\migrated\.migration-agent\state.json
 ```
 
+对迁移输出目录执行质量评估：
+
+```powershell
+.venv\Scripts\python.exe -m evals.run --quality-output D:\migrated
+```
+
 详细说明见 `docs/06_评估系统.md`。
 
 ## 文档入口

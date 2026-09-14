@@ -9,6 +9,7 @@ from typing import Any
 from evals.agentic_evals import run_agentic_evals
 from evals.edit_evals import run_edit_evals
 from evals.migration_evals import run_migration_evals
+from evals.quality_evals import run_quality_evals
 from evals.retrieval_evals import run_retrieval_evals
 from evals.rule_evals import run_rule_evals
 
@@ -93,6 +94,7 @@ def _summary(report: dict) -> dict[str, Any]:
     agentic = report.get("agentic", {}).get("result", {})
     edit = report.get("edit", {})
     rules = report.get("rules", {})
+    quality = report.get("quality")
     retrieval_summary: dict[str, Any] = {
         "avg_recall": retrieval.get("avg_recall"),
         "avg_ndcg": retrieval.get("avg_ndcg"),
@@ -108,7 +110,7 @@ def _summary(report: dict) -> dict[str, Any]:
             }
             for name, value in profiles.items()
         }
-    return {
+    summary = {
         "retrieval": retrieval_summary,
         "migration": {
             "passed": migration.get("passed"),
@@ -129,6 +131,17 @@ def _summary(report: dict) -> dict[str, Any]:
             "avg_recall": rules.get("avg_recall"),
         },
     }
+    if quality:
+        summary["quality"] = {
+            "overall_success": quality.get("overall_success"),
+            "python_files": quality.get("python_files"),
+            "syntax_pass_rate": quality.get("syntax_pass_rate"),
+            "unresolved_signal_count": quality.get(
+                "unresolved_signal_count"
+            ),
+            "behavior_success": quality.get("behavior", {}).get("success"),
+        }
+    return summary
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -146,6 +159,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--output",
         help="评估报告保存路径，默认 evals/reports/ 下按时间命名",
+    )
+    parser.add_argument(
+        "--quality-output",
+        help="对已有迁移输出目录运行质量评估",
     )
     args = parser.parse_args(argv)
 
@@ -184,6 +201,8 @@ def main(argv: list[str] | None = None) -> int:
         "edit": run_edit_evals(proposals=edit_proposals),
         "rules": run_rule_evals(),
     }
+    if args.quality_output:
+        report["quality"] = run_quality_evals(args.quality_output)
     path = save_report(report, args.output)
     print(f"评估报告已保存: {path}")
     print(json.dumps(_summary(report), ensure_ascii=False, indent=2))
