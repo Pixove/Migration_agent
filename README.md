@@ -134,6 +134,17 @@ DeepSeek 等 OpenAI 兼容服务可直接修改 `base_url`、`api_key_env` 和
 .venv\Scripts\python.exe -m evals.run --e2e --e2e-source examples\semantic_big_demo
 ```
 
+`--e2e` 未指定输出目录时，会自动使用
+`evals/e2e_runs/时间戳/`，审计数据写入该目录下的
+`.migration-agent/`；评估报告仍保存到 `evals/reports/`。也可显式指定：
+
+```powershell
+.venv\Scripts\python.exe -m evals.run `
+  --e2e `
+  --e2e-source examples\semantic_big_demo `
+  --e2e-output D:\e2e_target
+```
+
 默认评估不依赖 LLM API；`--e2e` 需要 LLM API。结果保存到
 `evals/reports/`。详细说明见 `docs/06_评估系统.md`。
 
