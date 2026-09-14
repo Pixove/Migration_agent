@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -334,6 +335,80 @@ def append_coverage_sections(
         handle.write("\n".join(lines))
 
 
+def approve_candidates(
+    rules_candidate: str | Path,
+    *,
+    rules_target: str | Path | None = None,
+    profile_candidate: str | Path | None = None,
+    profile_target: str | Path | None = None,
+    force: bool = False,
+) -> tuple[Path, Path | None]:
+    """显式批准后，把候选规则/档案复制到正式目录。"""
+    rules_source = Path(rules_candidate)
+    rules_data = yaml.safe_load(
+        rules_source.read_text(encoding="utf-8")
+    ) or {}
+    report = validate_candidate_rules(
+        rules_data.get("rules", []),
+    )
+    if report.errors:
+        raise ValueError("候选规则校验失败: " + "; ".join(report.errors))
+
+    parsed_profile = None
+    profile_source: Path | None = None
+    if profile_candidate:
+        profile_source = Path(profile_candidate)
+        profile_data = yaml.safe_load(
+            profile_source.read_text(encoding="utf-8")
+        ) or {}
+        parsed_profile = parse_profile_definition(
+            profile_data,
+            source=profile_source,
+        )
+        if parsed_profile.name in get_profiles() and not force:
+            raise ValueError(f"档案已存在: {parsed_profile.name}")
+        if rules_target is None and parsed_profile.rules:
+            rules_target = parsed_profile.rules[0]
+
+    if not rules_target:
+        raise ValueError("缺少 rules_target，无法确定正式规则路径")
+    rules_target_path = Path(rules_target)
+    profile_target_path: Path | None = None
+    if parsed_profile is not None:
+        if profile_target is None:
+            profile_target = (
+                Path(__file__).parent
+                / "profile_defs"
+                / f"{parsed_profile.name}.yaml"
+            )
+        profile_target_path = Path(profile_target)
+        rule_paths = {
+            Path(item).as_posix() for item in parsed_profile.rules
+        }
+        if rules_target_path.as_posix() not in rule_paths:
+            raise ValueError(
+                "候选档案 rules 未引用目标规则路径: "
+                f"{rules_target_path.as_posix()}"
+            )
+
+    targets = [rules_target_path]
+    if profile_target_path is not None:
+        targets.append(profile_target_path)
+    if not force:
+        for target in targets:
+            if target.exists():
+                raise ValueError(
+                    f"目标文件已存在，使用 --force 覆盖: {target}"
+                )
+
+    rules_target_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(rules_source, rules_target_path)
+    if profile_source is not None and profile_target_path is not None:
+        profile_target_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(profile_source, profile_target_path)
+    return rules_target_path, profile_target_path
+
+
 def _rule_api(rule: ApiRule) -> str:
     if rule.type == "from_import":
         return f"{rule.module}.{rule.name}"
@@ -455,7 +530,54 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="用候选规则扫描目标文件或目录，可多次指定",
     )
+    parser.add_argument(
+        "--approve",
+        action="store_true",
+        help="批准候选文件并复制到正式规则/档案目录",
+    )
+    parser.add_argument(
+        "--rules-candidate",
+        help="要批准的候选规则 YAML",
+    )
+    parser.add_argument(
+        "--rules-target",
+        help="正式规则目标路径",
+    )
+    parser.add_argument(
+        "--profile-candidate",
+        help="要批准的候选档案 YAML",
+    )
+    parser.add_argument(
+        "--profile-target",
+        help="正式档案目标路径",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="批准时覆盖已存在的目标文件",
+    )
     args = parser.parse_args(argv)
+
+    if args.approve:
+        if not args.rules_candidate:
+            print("批准模式必须提供 --rules-candidate")
+            return 2
+        try:
+            rules_target, profile_target = approve_candidates(
+                args.rules_candidate,
+                rules_target=args.rules_target,
+                profile_candidate=args.profile_candidate,
+                profile_target=args.profile_target,
+                force=args.force,
+            )
+        except (OSError, ValueError) as exc:
+            print(f"批准失败: {exc}")
+            return 1
+        print(f"正式规则: {rules_target}")
+        if profile_target is not None:
+            print(f"正式档案: {profile_target}")
+        print("请运行测试与 evals.run 后再提交。")
+        return 0
 
     if not args.docs:
         print("必须通过 --docs 指定至少一个知识文档")

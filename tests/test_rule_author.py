@@ -9,6 +9,7 @@ import yaml
 
 from migration.rule_author import (
     append_coverage_sections,
+    approve_candidates,
     build_profile_candidate,
     evaluate_candidate_coverage,
     extract_rule_candidates,
@@ -159,6 +160,66 @@ class RuleAuthorTests(unittest.TestCase):
             append_coverage_sections(review_path, [coverage])
             review = review_path.read_text(encoding="utf-8")
             self.assertIn("候选覆盖验证", review)
+
+    def test_approve_candidates_copies_to_targets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            docs = Path(tmp) / "guide.md"
+            docs.write_text("升级说明", encoding="utf-8")
+            report = validate_candidate_rules(
+                [self._candidate()],
+                existing_rules=[],
+            )
+            rules_path, _ = write_candidate_files(
+                Path(tmp) / "candidates.yaml",
+                [self._candidate()],
+                report,
+                source_paths=[docs],
+            )
+            rules_target = Path(tmp) / "rules" / "new_profile.yaml"
+            profile = build_profile_candidate(
+                "new_profile",
+                [self._candidate()],
+                [docs],
+            )
+            profile["rules"] = [str(rules_target)]
+            profile_path = write_profile_candidate(
+                Path(tmp) / "profile.yaml",
+                profile,
+            )
+            profile_target = Path(tmp) / "profile_defs" / "new_profile.yaml"
+            actual_rules, actual_profile = approve_candidates(
+                rules_path,
+                rules_target=rules_target,
+                profile_candidate=profile_path,
+                profile_target=profile_target,
+            )
+            self.assertEqual(actual_rules, rules_target)
+            self.assertEqual(actual_profile, profile_target)
+            self.assertTrue(rules_target.is_file())
+            self.assertTrue(profile_target.is_file())
+
+    def test_approve_refuses_existing_target_without_force(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            docs = Path(tmp) / "guide.md"
+            docs.write_text("升级说明", encoding="utf-8")
+            report = validate_candidate_rules(
+                [self._candidate()],
+                existing_rules=[],
+            )
+            rules_path, _ = write_candidate_files(
+                Path(tmp) / "candidates.yaml",
+                [self._candidate()],
+                report,
+                source_paths=[docs],
+            )
+            target = Path(tmp) / "rules" / "existing.yaml"
+            target.parent.mkdir(parents=True)
+            target.write_text("existing", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                approve_candidates(
+                    rules_path,
+                    rules_target=target,
+                )
 
 
 if __name__ == "__main__":

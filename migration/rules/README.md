@@ -154,6 +154,24 @@ from langchain_community.vectorstores import Chroma
 评审报告中列出候选规则命中了哪些 API、哪些候选规则没有在示例代码中
 出现，方便判断规则是否过宽或缺少示例。
 
+确认候选可以启用后，使用显式批准命令安装：
+
+```powershell
+.venv\Scripts\python.exe -m migration.rule_author `
+  --approve `
+  --rules-candidate migration\rule_candidates\langchain.yaml `
+  --profile-candidate migration\profile_candidates\langchain_community.yaml
+```
+
+批准过程会重新校验规则与档案：
+
+- 有字段错误或匹配冲突时拒绝安装；
+- 档案名已存在时拒绝安装；
+- 目标文件已存在时拒绝安装，除非显式传入 `--force`；
+- 通过后复制到 `migration/rules/profiles/` 与 `migration/profile_defs/`。
+
+批准完成后仍需运行测试与 `evals.run`，再提交正式文件。
+
 ## 当前限制
 
 - 规则表目前手工维护，不会自动解析 PDF/TXT 文档生成规则；
