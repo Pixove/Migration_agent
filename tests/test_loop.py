@@ -223,6 +223,33 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(counts["apply_patch"], 2)
             self.assertEqual(counts["run_verifier"], 2)
 
+    def test_fixed_flow_rollback_restores_previous_file_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            config = load_config("config.yaml")
+            runner = MigrationRunner(config, source, output, no_llm=True)
+            target = output / "a.py"
+            target.parent.mkdir()
+            target.write_text("x = 2\n", encoding="utf-8")
+            runner.ctx.transform = lambda text, item: "def broken(:\n"
+            item = PlanItem(
+                id="p1",
+                file="a.py",
+                issue="test",
+                action="transform",
+                impact="low",
+                evidence={"doc_id": "d1"},
+            )
+
+            runner._apply_item(item)
+
+            self.assertEqual(item.status, "failed")
+            self.assertIn("已恢复原文件", item.error or "")
+            self.assertEqual(target.read_text(encoding="utf-8"), "x = 2\n")
+
     def test_full_flow_with_docs_and_kb(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"

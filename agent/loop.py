@@ -14,6 +14,11 @@ from migration.registry import load_profile
 from migration.scan_signals import rules_paths_for_profile
 from retrieval import HybridRetriever
 from retrieval.knowledge_base import KnowledgeBase
+from tools.patcher import (
+    FileSnapshot,
+    capture_file_snapshot,
+    restore_file_snapshot,
+)
 from tools.scanner import FileInfo
 from tools.verifier import run_behavior_verification
 
@@ -270,6 +275,19 @@ class MigrationRunner:
                 )
                 return
 
+        output_path = self.guard.resolve_output(item.file)
+        try:
+            snapshot = capture_file_snapshot(output_path)
+        except OSError as exc:
+            item.status = "failed"
+            item.error = f"创建回滚快照失败: {exc}"
+            self.state.add_audit(
+                "apply_patch",
+                f"快照创建失败: {item.file}",
+                {"item_id": item.id, "error": str(exc)},
+            )
+            return
+
         self.budget.check_patch()
         patch_call = self.dispatcher.call("apply_patch", item=item)
         if not patch_call.success:
@@ -301,8 +319,7 @@ class MigrationRunner:
         if not verify_call.success:
             item.status = "failed"
             item.error = f"验证工具调用失败: {verify_call.error}"
-            output_path.unlink(missing_ok=True)
-            item.error += "；已回滚输出文件"
+            item.error += f"；{self._restore_snapshot(snapshot)}"
         else:
             verification = verify_call.result
             if not verification["success"]:
@@ -312,8 +329,7 @@ class MigrationRunner:
                     for check in verification["checks"]
                     if not check["ok"]
                 )
-                output_path.unlink(missing_ok=True)
-                item.error += "；已回滚输出文件"
+                item.error += f"；{self._restore_snapshot(snapshot)}"
             else:
                 self.budget.record_patch()
 
@@ -326,6 +342,14 @@ class MigrationRunner:
                 "diff_length": len(patch["diff"]),
             },
         )
+
+    @staticmethod
+    def _restore_snapshot(snapshot: FileSnapshot) -> str:
+        try:
+            action = restore_file_snapshot(snapshot)
+        except OSError as exc:
+            return f"回滚失败: {exc}"
+        return "已恢复原文件" if action == "restored" else "已删除新文件"
 
     def _finish(self) -> None:
         self.state.transition(Phase.VERIFY)

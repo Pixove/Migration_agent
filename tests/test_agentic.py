@@ -655,6 +655,43 @@ class AgenticRunnerTests(unittest.TestCase):
                 any(item.status == "failed" for item in state.plan_items)
             )
 
+    def test_agentic_rollback_restores_previous_file_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            (source / "a.py").write_text("x = 1\n", encoding="utf-8")
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(
+                    [{"thought": "结束", "action": "finish", "params": {}}]
+                ),
+            )
+            target = output / "a.py"
+            target.parent.mkdir()
+            target.write_text("x = 2\n", encoding="utf-8")
+            snapshot = runner._capture_output_snapshot(
+                "apply_edit",
+                {"item": {"file": "a.py"}},
+            )
+            target.write_text("def broken(:\n", encoding="utf-8")
+
+            verified, rollback_action = runner._auto_verify_apply(
+                "apply_edit",
+                {"item": {"file": "a.py"}},
+                {"output_path": str(target)},
+                snapshot,
+            )
+
+            self.assertFalse(verified)
+            self.assertEqual(rollback_action, "已恢复原文件")
+            self.assertEqual(target.read_text(encoding="utf-8"), "x = 2\n")
+
     def test_agentic_review_unavailable_allows_edit(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"

@@ -22,7 +22,12 @@ from migration.registry import load_profile
 from migration.scan_signals import rules_paths_for_profile, scan_python_signals
 from retrieval import HybridRetriever
 from retrieval.knowledge_base import KnowledgeBase
-from tools.patcher import apply_plan_item
+from tools.patcher import (
+    FileSnapshot,
+    apply_plan_item,
+    capture_file_snapshot,
+    restore_file_snapshot,
+)
 from tools.reporter import write_report as generate_report
 from tools.verifier import run_behavior_verification
 
@@ -597,6 +602,7 @@ class AgenticRunner:
             if action not in self.dispatcher.available():
                 raise GuardrailError(f"模型调用了未注册工具: {action}")
 
+            snapshot = self._capture_output_snapshot(action, params)
             result = self.dispatcher.call(action, **params)
             self.state.add_audit(
                 "agentic",
@@ -617,10 +623,11 @@ class AgenticRunner:
                     if isinstance(preview, dict) and preview.get("file"):
                         self._edit_previews[preview["file"]] = preview
                 if action in ("apply_patch", "apply_edit"):
-                    verified = self._auto_verify_apply(
+                    verified, rollback_action = self._auto_verify_apply(
                         action,
                         params,
                         result.result,
+                        snapshot,
                     )
                     if verified:
                         self._record_applied_item(action, params, result.result)
@@ -636,7 +643,12 @@ class AgenticRunner:
                             self.workspace.save_state()
                             return
                     else:
-                        self._record_failed_item(action, params, result.result)
+                        self._record_failed_item(
+                            action,
+                            params,
+                            result.result,
+                            rollback_action,
+                        )
                 if action == "apply_edit":
                     remaining_signals = self._signals_after_edit(
                         edit_item,
@@ -1036,6 +1048,10 @@ class AgenticRunner:
             )
             return False
 
+        snapshot = self._capture_output_snapshot(
+            "apply_edit",
+            {"item": normalized},
+        )
         result = self.dispatcher.call("apply_edit", item=normalized)
         self.state.add_audit(
             "agentic",
@@ -1047,14 +1063,25 @@ class AgenticRunner:
         )
         if not result.success:
             return False
-        if self._auto_verify_apply("apply_edit", {"item": normalized}, result.result):
+        verified, rollback_action = self._auto_verify_apply(
+            "apply_edit",
+            {"item": normalized},
+            result.result,
+            snapshot,
+        )
+        if verified:
             self._record_applied_item("apply_edit", {"item": normalized}, result.result)
             self.state.add_audit(
                 "agentic",
                 f"定向修复已应用: {file}（剩余尝试 {attempts_left} 次）",
             )
             return True
-        self._record_failed_item("apply_edit", {"item": normalized}, result.result)
+        self._record_failed_item(
+            "apply_edit",
+            {"item": normalized},
+            result.result,
+            rollback_action,
+        )
         return False
 
     def _finish(self) -> None:
@@ -1426,30 +1453,66 @@ class AgenticRunner:
         action: str,
         params: dict,
         payload: Any,
-    ) -> bool:
-        """应用后自动验证输出文件，失败则回滚。"""
+        snapshot: FileSnapshot | None,
+    ) -> tuple[bool, str | None]:
+        """应用后自动验证输出文件，失败则恢复写入前快照。"""
         if not isinstance(payload, dict) or not payload.get("output_path"):
-            return False
+            return False, None
         output_path = Path(payload["output_path"])
         verify = self.dispatcher.call("run_verifier", path=str(output_path))
         if verify.success and verify.result.get("success"):
-            return True
-        output_path.unlink(missing_ok=True)
+            return True, None
+
+        rollback_action = self._restore_snapshot(snapshot, output_path)
         file = params.get("item", {}).get("file", "") if isinstance(
             params.get("item"), dict
         ) else ""
         self.state.add_audit(
             "agentic",
-            f"应用后验证失败，已回滚: {file}",
-            {"verify_error": verify.error or "验证失败"},
+            f"应用后验证失败，已回滚: {file}（{rollback_action}）",
+            {
+                "verify_error": verify.error or "验证失败",
+                "rollback": rollback_action,
+            },
         )
-        return False
+        return False, rollback_action
+
+    def _capture_output_snapshot(
+        self,
+        action: str,
+        params: dict,
+    ) -> FileSnapshot | None:
+        if action not in ("apply_patch", "apply_edit"):
+            return None
+        item = params.get("item")
+        if not isinstance(item, dict) or not item.get("file"):
+            return None
+        try:
+            output_path = self.guard.resolve_output(str(item["file"]))
+            return capture_file_snapshot(output_path)
+        except (GuardrailError, OSError):
+            return None
+
+    @staticmethod
+    def _restore_snapshot(
+        snapshot: FileSnapshot | None,
+        output_path: Path,
+    ) -> str:
+        try:
+            if snapshot is None:
+                output_path.unlink(missing_ok=True)
+                return "已删除新文件"
+            action = restore_file_snapshot(snapshot)
+        except OSError as exc:
+            return f"回滚失败: {exc}"
+        return "已恢复原文件" if action == "restored" else "已删除新文件"
 
     def _record_failed_item(
         self,
         action: str,
         params: dict,
         payload: Any,
+        rollback_action: str | None = None,
     ) -> None:
         item_raw = (
             params.get("item")
@@ -1474,7 +1537,10 @@ class AgenticRunner:
             impact=item_raw.get("impact", "low"),
             evidence=evidence if isinstance(evidence, dict) else {},
             status="failed",
-            error="应用后验证失败，已回滚",
+            error=(
+                "应用后验证失败"
+                + (f"；{rollback_action}" if rollback_action else "")
+            ),
             output_file=self._relative_output(payload),
         )
         self.state.add_plan_item(plan_item)

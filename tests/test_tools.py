@@ -8,7 +8,11 @@ from pathlib import Path
 from agent.config import VerificationConfig, load_config
 from agent.guardrails import GuardrailError, PathGuard
 from agent.state import AuditWorkspace, MigrationState, PlanItem
-from tools.patcher import apply_plan_item
+from tools.patcher import (
+    apply_plan_item,
+    capture_file_snapshot,
+    restore_file_snapshot,
+)
 from tools.reporter import write_report
 from tools.scanner import scan_project
 from tools.verifier import run_behavior_verification, verify_file
@@ -104,6 +108,31 @@ class PatcherTests(unittest.TestCase):
 
             self.assertTrue(result.success)
             self.assertTrue(verify_file(result.output_path).success)
+
+
+class FileSnapshotTests(unittest.TestCase):
+    def test_restore_existing_file_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "a.py"
+            target.write_bytes(b"x = 1\n")
+            snapshot = capture_file_snapshot(target)
+            target.write_bytes(b"def broken(:\n")
+
+            action = restore_file_snapshot(snapshot)
+
+            self.assertEqual(action, "restored")
+            self.assertEqual(target.read_bytes(), b"x = 1\n")
+
+    def test_restore_missing_file_removes_new_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "a.py"
+            snapshot = capture_file_snapshot(target)
+            target.write_bytes(b"new = True\n")
+
+            action = restore_file_snapshot(snapshot)
+
+            self.assertEqual(action, "removed")
+            self.assertFalse(target.exists())
 
 
 class VerifierTests(unittest.TestCase):

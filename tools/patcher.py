@@ -17,6 +17,40 @@ class PatchResult:
     error: str | None = None
 
 
+@dataclass(frozen=True)
+class FileSnapshot:
+    path: Path
+    existed: bool
+    content: bytes | None = None
+
+
+def capture_file_snapshot(path: str | Path) -> FileSnapshot:
+    """记录目标文件在写入前的精确内容。"""
+    target = Path(path)
+    if not target.exists():
+        return FileSnapshot(path=target, existed=False)
+    if not target.is_file():
+        raise OSError(f"回滚目标不是文件: {target}")
+    return FileSnapshot(
+        path=target,
+        existed=True,
+        content=target.read_bytes(),
+    )
+
+
+def restore_file_snapshot(snapshot: FileSnapshot) -> str:
+    """恢复文件快照，返回 restored 或 removed。"""
+    if snapshot.existed:
+        if snapshot.content is None:
+            raise OSError("文件快照缺少原始内容")
+        snapshot.path.parent.mkdir(parents=True, exist_ok=True)
+        snapshot.path.write_bytes(snapshot.content)
+        return "restored"
+
+    snapshot.path.unlink(missing_ok=True)
+    return "removed"
+
+
 def apply_plan_item(
     item: PlanItem,
     guard: PathGuard,
