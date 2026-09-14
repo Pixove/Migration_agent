@@ -7,6 +7,12 @@ from typing import Any
 
 VALID_PROVIDERS = ("openai", "ollama")
 VALID_IMPACT_LEVELS = ("low", "medium", "high")
+DEFAULT_ALLOWED_OUTPUT_ENTRIES = (
+    ".venv",
+    "venv",
+    ".git",
+    ".migration-agent",
+)
 
 
 class ConfigError(Exception):
@@ -100,6 +106,9 @@ class GuardrailsConfig:
             "build",
             ".migration-agent",
         ]
+    )
+    allowed_output_entries: list[str] = field(
+        default_factory=lambda: list(DEFAULT_ALLOWED_OUTPUT_ENTRIES)
     )
 
 
@@ -230,6 +239,28 @@ def _build_guardrails_config(section: dict[str, Any]) -> GuardrailsConfig:
     if invalid:
         raise ConfigError(f"guardrails.require_approval_impact 包含非法等级: {invalid}")
 
+    allowed_output_entries = _get(
+        section,
+        "allowed_output_entries",
+        list(DEFAULT_ALLOWED_OUTPUT_ENTRIES),
+    )
+    if not isinstance(allowed_output_entries, list):
+        raise ConfigError("guardrails.allowed_output_entries 必须是列表")
+    normalized_output_entries: list[str] = []
+    for entry in allowed_output_entries:
+        name = str(entry)
+        if (
+            not name
+            or name in {".", ".."}
+            or "/" in name
+            or "\\" in name
+            or Path(name).name != name
+        ):
+            raise ConfigError(
+                f"guardrails.allowed_output_entries 只能使用目录名: {entry}"
+            )
+        normalized_output_entries.append(name)
+
     return GuardrailsConfig(
         allowed_tools=list(tools),
         auto_apply_max_impact=impact,
@@ -238,6 +269,7 @@ def _build_guardrails_config(section: dict[str, Any]) -> GuardrailsConfig:
         deny_extensions=list(_get(section, "deny_extensions", [])),
         max_file_size_mb=int(_get(section, "max_file_size_mb", 5)),
         excluded_dirs=list(_get(section, "excluded_dirs", [])),
+        allowed_output_entries=normalized_output_entries,
     )
 
 

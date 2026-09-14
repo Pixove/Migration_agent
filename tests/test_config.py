@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent.config import load_config
+from agent.config import DEFAULT_ALLOWED_OUTPUT_ENTRIES, load_config
 
 
 class ConfigFallbackTests(unittest.TestCase):
@@ -34,6 +34,13 @@ class ConfigFallbackTests(unittest.TestCase):
         self.assertEqual(config.verification.import_modules, [])
         self.assertEqual(config.verification.commands, [])
         self.assertTrue(config.verification.fail_on_error)
+
+    def test_default_allowed_output_entries(self):
+        config = load_config("config.example.yaml")
+        self.assertEqual(
+            config.guardrails.allowed_output_entries,
+            list(DEFAULT_ALLOWED_OUTPUT_ENTRIES),
+        )
 
 
 if __name__ == "__main__":

@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from agent.config import GuardrailsConfig, VALID_IMPACT_LEVELS
+from agent.config import (
+    DEFAULT_ALLOWED_OUTPUT_ENTRIES,
+    GuardrailsConfig,
+    VALID_IMPACT_LEVELS,
+)
 
 
 class GuardrailError(Exception):
@@ -17,10 +22,21 @@ class BudgetExceeded(GuardrailError):
 class PathGuard:
     """路径沙箱：输入项目只读，输出目录为唯一可写区域。"""
 
-    def __init__(self, source_root: str | Path, output_root: str | Path) -> None:
+    def __init__(
+        self,
+        source_root: str | Path,
+        output_root: str | Path,
+        allowed_output_entries: Iterable[str] | None = None,
+    ) -> None:
         self.source_root = Path(source_root).resolve()
         self.output_root = Path(output_root).resolve()
+        self.allowed_output_entries = set(
+            DEFAULT_ALLOWED_OUTPUT_ENTRIES
+            if allowed_output_entries is None
+            else allowed_output_entries
+        )
         self._validate_roots()
+        self._validate_output_root()
 
     def _validate_roots(self) -> None:
         if self.source_root == self.output_root:
@@ -39,6 +55,26 @@ class PathGuard:
             pass
         else:
             raise GuardrailError("输出路径不能位于输入项目内部")
+
+    def _validate_output_root(self) -> None:
+        if not self.output_root.exists():
+            return
+        if not self.output_root.is_dir():
+            raise GuardrailError(f"输出路径不是目录: {self.output_root}")
+
+        unexpected = sorted(
+            entry.name
+            for entry in self.output_root.iterdir()
+            if entry.name not in self.allowed_output_entries
+        )
+        if unexpected:
+            preview = "、".join(unexpected[:5])
+            suffix = " 等" if len(unexpected) > 5 else ""
+            allowed = "、".join(sorted(self.allowed_output_entries)) or "无"
+            raise GuardrailError(
+                f"输出目录包含未允许的内容: {preview}{suffix}；"
+                f"仅允许预置目录: {allowed}"
+            )
 
     def resolve_source(self, relative: str | Path) -> Path:
         """将相对路径解析到输入项目根内，越界即拒绝。"""
@@ -141,7 +177,11 @@ def build_guardrails(
 ) -> tuple[PathGuard, ToolRegistry, ApprovalPolicy]:
     """集中构造护栏组件，方便主循环注入。"""
     return (
-        PathGuard(source_root, output_root),
+        PathGuard(
+            source_root,
+            output_root,
+            config.allowed_output_entries,
+        ),
         ToolRegistry(config.allowed_tools),
         ApprovalPolicy(config),
     )

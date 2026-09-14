@@ -7,9 +7,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from agent.config import load_config
 from evals import run as eval_run
 from evals.e2e_evals import infer_profile, run_e2e_evals
+from tests.helpers import load_config
 
 
 class FakeE2ELLM:

@@ -112,12 +112,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    if Path(output).is_dir() and any(Path(output).iterdir()):
-        print(
-            f"警告: 输出目录非空: {output}，可能残留旧文件",
-            file=sys.stderr,
-        )
-
     try:
         if args.agentic:
             if args.no_llm:

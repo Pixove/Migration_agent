@@ -161,6 +161,19 @@ class VerifierTests(unittest.TestCase):
             self.assertTrue(checks["package:PyYAML"])
             self.assertFalse(checks["package:missing_package_xyz"])
 
+    def test_behavior_rejects_bare_python_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = VerificationConfig(
+                enabled=True,
+                commands=[sys.executable],
+            )
+            result = run_behavior_verification(tmp, config)
+            self.assertFalse(result.success)
+            self.assertIn(
+                "缺少 -c/-m 或脚本路径",
+                result.checks[0].message,
+            )
+
 
 class ReporterTests(unittest.TestCase):
     def test_write_report(self):

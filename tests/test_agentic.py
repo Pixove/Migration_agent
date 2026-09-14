@@ -7,8 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agent.agentic import AgenticRunner
-from agent.config import load_config
 from agent.llm import LLMError
+from tests.helpers import load_config
 
 
 class FakeAgentLLM:

@@ -6,13 +6,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agent.config import load_config
 from agent.guardrails import GuardrailError
 from agent.llm import LLMError
 from agent.loop import MigrationRunner
 from agent.planning import build_fallback_plan, generate_llm_plan, refactor_ratio
 from agent.state import Phase, PlanItem
 from retrieval.knowledge_base import KnowledgeBase
+from tests.helpers import load_config
 from tools.scanner import FileInfo
 
 

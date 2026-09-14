@@ -118,6 +118,13 @@ guardrails:
     - build
     - .migration-agent
 
+  # 输出目录允许预先存在的目录；其他内容会使迁移在启动前被拒绝
+  allowed_output_entries:
+    - .venv
+    - venv
+    - .git
+    - .migration-agent
+
 verification:
   # 是否在收尾阶段执行行为验证（import 检查与命令）
   enabled: false

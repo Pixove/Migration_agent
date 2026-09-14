@@ -24,11 +24,13 @@ def run_quality_evals(
             "overall_success": False,
         }
 
-    audit_dir_name = config.workspace.audit_dir_name
+    excluded_dirs = set(config.guardrails.excluded_dirs)
+    excluded_dirs.add(config.workspace.audit_dir_name)
     py_files = [
         path
         for path in sorted(root.rglob("*.py"))
-        if path.is_file() and audit_dir_name not in path.parts
+        if path.is_file()
+        and not excluded_dirs.intersection(path.parts)
     ]
 
     syntax_failures = []

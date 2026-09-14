@@ -70,10 +70,29 @@ class QualityEvalTests(unittest.TestCase):
             (root / "app.py").write_text("x = 1\n", encoding="utf-8")
             config = load_config("config.yaml")
             config.verification.enabled = True
+            config.verification.commands = []
+            config.verification.required_files = []
+            config.verification.required_packages = []
             config.verification.import_modules = ["sys"]
             report = run_quality_evals(root, config)
             self.assertEqual(report["syntax_pass_rate"], 1.0)
             self.assertTrue(report["behavior"]["success"])
+            self.assertTrue(report["overall_success"])
+
+    def test_quality_ignores_excluded_virtualenv_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("x = 1\n", encoding="utf-8")
+            venv = root / ".venv"
+            venv.mkdir()
+            (venv / "bad.py").write_text(
+                "def broken(:\n",
+                encoding="utf-8",
+            )
+            config = load_config("config.example.yaml")
+            report = run_quality_evals(root, config)
+            self.assertEqual(report["python_files"], 1)
+            self.assertEqual(report["syntax_pass_rate"], 1.0)
             self.assertTrue(report["overall_success"])
 
 

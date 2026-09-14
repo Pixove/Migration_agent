@@ -59,6 +59,9 @@ DeepSeek 等 OpenAI 兼容服务可直接修改 `base_url`、`api_key_env` 和
   --agentic
 ```
 
+输出目录必须为空，或只包含 `.venv`、`venv`、`.git` 和
+`.migration-agent`；其他内容会在迁移启动前被拒绝。
+
 不使用大模型时回退为原样复制：
 
 ```powershell

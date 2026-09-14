@@ -103,6 +103,15 @@ def run_behavior_verification(
                 CheckResult("command", False, f"空命令: {command}")
             )
             continue
+        if _is_bare_python_command(parts):
+            checks.append(
+                CheckResult(
+                    f"command:{command}",
+                    False,
+                    "Python 命令缺少 -c/-m 或脚本路径",
+                )
+            )
+            continue
         checks.append(
             _run_command_check(
                 f"command:{command}",
@@ -174,6 +183,7 @@ def _run_command_check(
             capture_output=True,
             text=True,
             timeout=timeout,
+            stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired:
         return CheckResult(name, False, f"验证超时（{timeout} 秒）")
@@ -188,3 +198,10 @@ def _run_command_check(
         False,
         f"退出码 {result.returncode}: {output[:500]}",
     )
+
+
+def _is_bare_python_command(parts: list[str]) -> bool:
+    if len(parts) != 1:
+        return False
+    name = Path(parts[0]).stem.lower()
+    return name.startswith("python")
