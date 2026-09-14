@@ -122,6 +122,25 @@ from langchain_community.vectorstores import Chroma
 4. 用示例项目运行一次迁移，检查信号是否进入批次并被正确修复；
 5. 复杂或高风险的迁移规则设置 `severity: high`，保留人工审批。
 
+## 从知识文档生成候选规则
+
+可以使用规则生成器从 Markdown、TXT 或 PDF 文档抽取候选规则：
+
+```powershell
+.venv\Scripts\python.exe -m migration.rule_author `
+  --docs D:\docs\langchain_upgrade.md `
+  --output migration\rule_candidates\langchain.yaml
+```
+
+生成结果包含两个文件：
+
+- `langchain.yaml`：候选规则，格式与正式规则文件一致；
+- `langchain.review.md`：校验结果、冲突提示和候选规则摘要。
+
+生成器不会自动启用规则。人工评审后，再决定是否移动到
+`migration/rules/` 或 `migration/rules/profiles/`，并在档案的 `rules`
+字段中引用。存在 ID 重复、匹配冲突或字段错误时，生成器返回非零退出码。
+
 ## 当前限制
 
 - 规则表目前手工维护，不会自动解析 PDF/TXT 文档生成规则；

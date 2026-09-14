@@ -9,4 +9,5 @@ build/
 .migration-agent/
 kb/
 evals/reports/
+migration/rule_candidates/
 *.log

@@ -150,19 +150,29 @@ def _load_rule_file(path: Path) -> list[ApiRule]:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     except (OSError, yaml.YAMLError) as exc:
         raise ValueError(f"读取 API 规则文件失败: {path}: {exc}") from exc
-    items = data.get("rules")
-    if not isinstance(items, list):
-        raise ValueError(f"API 规则文件缺少 rules 列表: {path}")
+    return list(parse_api_rules(data.get("rules"), source=path))
 
+
+def parse_api_rules(
+    items: Any,
+    source: str | Path = "<rules>",
+) -> tuple[ApiRule, ...]:
+    """校验并解析规则列表，供规则文件和规则生成器复用。"""
+    if not isinstance(items, list):
+        raise ValueError(f"API 规则缺少 rules 列表: {source}")
     rules: list[ApiRule] = []
     for index, item in enumerate(items, start=1):
-        rules.append(_parse_rule(item, path, index))
-    return rules
+        rules.append(_parse_rule(item, source, index))
+    return tuple(rules)
 
 
-def _parse_rule(item: Any, path: Path, index: int) -> ApiRule:
+def _parse_rule(
+    item: Any,
+    source: str | Path,
+    index: int,
+) -> ApiRule:
     if not isinstance(item, dict):
-        raise ValueError(f"API 规则必须是对象: {path} 第 {index} 条")
+        raise ValueError(f"API 规则必须是对象: {source} 第 {index} 条")
     missing = [
         key
         for key in ("id", "kind", "type", "name", "message")
@@ -170,18 +180,18 @@ def _parse_rule(item: Any, path: Path, index: int) -> ApiRule:
     ]
     if missing:
         raise ValueError(
-            f"API 规则缺少字段 {missing}: {path} 第 {index} 条"
+            f"API 规则缺少字段 {missing}: {source} 第 {index} 条"
         )
     rule_type = str(item["type"])
     if rule_type not in VALID_RULE_TYPES:
         raise ValueError(
-            f"API 规则 type 非法: {rule_type}（{path} 第 {index} 条），"
+            f"API 规则 type 非法: {rule_type}（{source} 第 {index} 条），"
             f"可选: {sorted(VALID_RULE_TYPES)}"
         )
     module = str(item.get("module", ""))
     if rule_type == "from_import" and not module:
         raise ValueError(
-            f"from_import 规则缺少 module: {path} 第 {index} 条"
+            f"from_import 规则缺少 module: {source} 第 {index} 条"
         )
     if (
         str(item["kind"]) == "deprecated_api"
@@ -190,7 +200,7 @@ def _parse_rule(item: Any, path: Path, index: int) -> ApiRule:
     ):
         raise ValueError(
             f"deprecated_api 规则缺少 replacement 或 docs: "
-            f"{path} 第 {index} 条"
+            f"{source} 第 {index} 条"
         )
     return ApiRule(
         id=str(item["id"]),
