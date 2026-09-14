@@ -137,6 +137,16 @@ class SignalScannerTests(unittest.TestCase):
                 {"legacy_a", "legacy_b.OldThing"},
             )
 
+    def test_default_rules_detect_langchain_community_import(self):
+        source = "from langchain_community.vectorstores import Chroma\n"
+        signals = scan_python_signals(source, "app.py")
+        self.assertTrue(
+            any(
+                signal["api"] == "langchain_community.vectorstores.Chroma"
+                for signal in signals
+            )
+        )
+
     def test_invalid_rule_type_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             rules_path = Path(tmp) / "rules.yaml"

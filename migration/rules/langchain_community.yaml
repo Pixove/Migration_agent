@@ -1,0 +1,167 @@
+# LangChain Community 包拆分与集成迁移规则。
+# 这些规则只负责定位文件；具体替换由 LLM 结合知识文档生成。
+rules:
+  - id: lc_community_chroma_import
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.vectorstores
+    name: Chroma
+    replacement: from langchain_chroma import Chroma
+    message: Chroma 已迁移到 langchain_chroma，请更新导入
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_pgvector_import
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.vectorstores
+    name: PGVector
+    replacement: from langchain_postgres import PGVector
+    message: PGVector 已迁移到 langchain_postgres，请更新导入
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_qdrant_import
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.vectorstores
+    name: Qdrant
+    replacement: from langchain_qdrant import QdrantVectorStore
+    message: Qdrant 已迁移到 langchain_qdrant.QdrantVectorStore
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_pinecone_import
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.vectorstores
+    name: Pinecone
+    replacement: from langchain_pinecone import PineconeVectorStore
+    message: Pinecone 已迁移到 langchain_pinecone.PineconeVectorStore
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_hf_embeddings
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.embeddings
+    name: HuggingFaceEmbeddings
+    replacement: from langchain_huggingface import HuggingFaceEmbeddings
+    message: HuggingFaceEmbeddings 已迁移到 langchain_huggingface
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_hf_bge_embeddings
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.embeddings
+    name: HuggingFaceBgeEmbeddings
+    replacement: from langchain_huggingface import HuggingFaceBgeEmbeddings
+    message: HuggingFaceBgeEmbeddings 已迁移到 langchain_huggingface
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_ollama_embeddings
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.embeddings
+    name: OllamaEmbeddings
+    replacement: from langchain_ollama import OllamaEmbeddings
+    message: OllamaEmbeddings 已迁移到 langchain_ollama
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_chat_ollama
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.chat_models
+    name: ChatOllama
+    replacement: from langchain_ollama import ChatOllama
+    message: ChatOllama 已迁移到 langchain_ollama
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_ollama_llm
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.llms
+    name: Ollama
+    replacement: from langchain_ollama import OllamaLLM
+    message: Ollama 已迁移到 langchain_ollama.OllamaLLM
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_chat_openai
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.chat_models
+    name: ChatOpenAI
+    replacement: from langchain_openai import ChatOpenAI
+    message: ChatOpenAI 已迁移到 langchain_openai
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_openai_llm
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.llms
+    name: OpenAI
+    replacement: from langchain_openai import OpenAI
+    message: OpenAI 已迁移到 langchain_openai
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_openai_embeddings
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.embeddings
+    name: OpenAIEmbeddings
+    replacement: from langchain_openai import OpenAIEmbeddings
+    message: OpenAIEmbeddings 已迁移到 langchain_openai
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_chat_anthropic
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.chat_models
+    name: ChatAnthropic
+    replacement: from langchain_anthropic import ChatAnthropic
+    message: ChatAnthropic 已迁移到 langchain_anthropic
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_anthropic_llm
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.llms
+    name: Anthropic
+    replacement: from langchain_anthropic import Anthropic
+    message: Anthropic 已迁移到 langchain_anthropic
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
+
+  - id: lc_community_chat_google
+    kind: deprecated_api
+    type: from_import
+    module: langchain_community.chat_models
+    name: ChatGoogleGenerativeAI
+    replacement: from langchain_google_genai import ChatGoogleGenerativeAI
+    message: ChatGoogleGenerativeAI 已迁移到 langchain_google_genai
+    docs: langchain_community_upgrade
+    package: langchain_community
+    severity: medium
