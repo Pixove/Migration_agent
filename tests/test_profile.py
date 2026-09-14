@@ -11,6 +11,7 @@ class ProfileRegistryTests(unittest.TestCase):
         profiles = get_profiles()
         self.assertIn("py2to3", profiles)
         self.assertIn("py3_upgrade", profiles)
+        self.assertIn("langchain_community", profiles)
 
     def test_load_unknown_profile_raises(self):
         with self.assertRaises(ValueError):
@@ -18,12 +19,25 @@ class ProfileRegistryTests(unittest.TestCase):
 
     def test_config_has_migration_profile(self):
         config = load_config("config.yaml")
-        self.assertIn(config.migration.profile, {"py2to3", "py3_upgrade"})
+        self.assertIn(
+            config.migration.profile,
+            {"py2to3", "py3_upgrade", "langchain_community"},
+        )
         self.assertIn(config.migration.scope, {"syntax", "deprecated_api"})
 
     def test_py3_upgrade_profile_has_transform(self):
         profile = load_profile("py3_upgrade")
         self.assertIsNotNone(profile.transform)
+
+    def test_profiles_have_chat_metadata(self):
+        profiles = get_profiles()
+        py3 = profiles["py3_upgrade"]
+        self.assertEqual(py3.default_scope, "syntax")
+        self.assertIn("python 3", py3.keywords)
+        langchain = profiles["langchain_community"]
+        self.assertEqual(langchain.default_scope, "deprecated_api")
+        self.assertIn("langchain", langchain.keywords)
+        self.assertGreater(langchain.priority, py3.priority)
 
     def test_profiles_have_knowledge_base(self):
         profiles = get_profiles()
@@ -34,6 +48,10 @@ class ProfileRegistryTests(unittest.TestCase):
         self.assertEqual(
             profiles["py3_upgrade"].knowledge_base,
             ["knowledge_base/py3_upgrade", "knowledge_base/topics"],
+        )
+        self.assertEqual(
+            profiles["langchain_community"].knowledge_base,
+            ["knowledge_base/langchain", "knowledge_base/topics"],
         )
 
 

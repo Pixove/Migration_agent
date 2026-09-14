@@ -1,0 +1,23 @@
+name: py3_upgrade
+description: Python 3.x 升级迁移，覆盖废弃 API 与新语法
+transform: py3_upgrade
+scopes:
+  - syntax
+  - deprecated_api
+default_scope: syntax
+knowledge_base:
+  - knowledge_base/py3_upgrade
+  - knowledge_base/topics
+keywords:
+  - python 3
+  - "3.8"
+  - "3.9"
+  - "3.10"
+  - "3.11"
+  - "3.12"
+  - "3.13"
+  - 升级
+  - 新版
+  - api
+  - 废弃
+priority: 10

@@ -9,6 +9,7 @@ from agent.config import ConfigError, load_config
 from agent.agentic import AgenticRunner
 from agent.llm import create_llm_client
 from agent.loop import MigrationRunner
+from migration.registry import get_profiles
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -48,6 +49,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="使用 LLM 工具决策循环，让模型自主调用工具",
     )
+    parser.add_argument(
+        "--profile",
+        help="迁移档案，覆盖 config.yaml 中的 migration.profile",
+    )
+    parser.add_argument(
+        "--scope",
+        help="迁移范围，覆盖 config.yaml 中的 migration.scope",
+    )
     return parser.parse_args(argv)
 
 
@@ -80,6 +89,28 @@ def main(argv: list[str] | None = None) -> int:
         if not Path(source).is_dir():
             print(f"输入项目不存在或不是目录: {source}", file=sys.stderr)
             return 2
+
+    if args.profile:
+        config.migration.profile = args.profile
+    if args.scope:
+        config.migration.scope = args.scope
+
+    profiles = get_profiles()
+    if config.migration.profile not in profiles:
+        print(
+            f"未知迁移档案: {config.migration.profile}，"
+            f"可选: {sorted(profiles)}",
+            file=sys.stderr,
+        )
+        return 2
+    allowed_scopes = profiles[config.migration.profile].scopes
+    if config.migration.scope not in allowed_scopes:
+        print(
+            f"档案 {config.migration.profile} 不支持范围 "
+            f"{config.migration.scope}，可选: {allowed_scopes}",
+            file=sys.stderr,
+        )
+        return 2
 
     if Path(output).is_dir() and any(Path(output).iterdir()):
         print(

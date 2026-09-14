@@ -1407,6 +1407,38 @@ class AgenticRunnerTests(unittest.TestCase):
             self.assertIn("不能只叠加新写法", prompt)
             self.assertNotIn("以下为项目约束上下文，必须遵守", prompt)
 
+    def test_docs_are_added_to_profile_knowledge_base(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            docs = Path(tmp) / "extra_docs"
+            source.mkdir()
+            docs.mkdir()
+            (docs / "custom.md").write_text("自定义迁移文档", encoding="utf-8")
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                docs=[str(docs)],
+                llm=FakeAgentLLM([{"action": "finish", "params": {}}]),
+            )
+            with patch("agent.agentic.KnowledgeBase") as kb_cls:
+                kb = kb_cls.return_value
+                kb.documents.return_value = []
+                runner._initialize()
+                imported = [
+                    call.args[0]
+                    for call in kb.import_source.call_args_list
+                ]
+            self.assertIn(
+                runner.profile.knowledge_base[0],
+                imported,
+            )
+            self.assertIn(str(docs), imported)
+
     def test_agentic_skips_duplicate_read_document(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"

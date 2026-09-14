@@ -182,7 +182,11 @@ class AgenticRunner:
         self.state.transition(Phase.SCAN)
 
         kb = KnowledgeBase(self.config.retrieval.kb_dir)
-        sources = self.docs or list(self.profile.knowledge_base)
+        sources = list(self.profile.knowledge_base)
+        for path in self.docs:
+            source = str(path)
+            if source not in sources:
+                sources.append(source)
         for path in sources:
             if not Path(path).exists():
                 continue

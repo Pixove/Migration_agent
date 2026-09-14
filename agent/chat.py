@@ -10,12 +10,26 @@ from migration.registry import get_profiles
 
 MAX_ATTEMPTS = 3
 
-INTENT_PROMPT = (
-    "你是迁移目标解析器。用户会描述迁移目标，请提取为 JSON："
-    '{"profile": "py2to3|py3_upgrade", "scope": "syntax|deprecated_api", '
-    '"needs_more_info": "一句话说明缺少什么，若无则为空字符串"}。'
-    "只能使用已支持的档案，不要输出其他内容。"
-)
+UNSUPPORTED_FRAMEWORKS = ("django", "flask")
+
+
+def build_intent_prompt() -> str:
+    """根据档案定义生成意图解析提示。"""
+    profile_lines = [
+        (
+            f"- {name}: {profile.description}；"
+            f"scopes={profile.scopes}；keywords={profile.keywords}"
+        )
+        for name, profile in get_profiles().items()
+    ]
+    return (
+        "你是迁移目标解析器。用户会描述迁移目标，请提取为 JSON："
+        '{"profile": "档案名", "scope": "范围", '
+        '"needs_more_info": "一句话说明缺少什么，若无则为空字符串"}。\n'
+        "只能使用以下已支持档案：\n"
+        + "\n".join(profile_lines)
+        + "\n不要输出其他内容。"
+    )
 
 
 @dataclass
@@ -72,7 +86,7 @@ class ChatSession:
         if self.llm is None:
             return _keyword_intent(answer)
         messages = [
-            {"role": "system", "content": INTENT_PROMPT},
+            {"role": "system", "content": build_intent_prompt()},
             {"role": "user", "content": answer},
         ]
         try:
@@ -120,31 +134,32 @@ class ChatSession:
 
 def _keyword_intent(answer: str) -> dict:
     text = answer.lower()
-    if any(keyword in text for keyword in ("django", "flask", "框架")):
+    profiles = get_profiles()
+    if any(keyword in text for keyword in UNSUPPORTED_FRAMEWORKS):
+        supported = "、".join(profiles)
         return {
             "profile": "unknown",
             "scope": "",
-            "needs_more_info": "暂不支持框架档案，可选 py2to3 或 py3_upgrade",
+            "needs_more_info": f"暂不支持该框架档案，可选 {supported}",
         }
-    if any(keyword in text for keyword in ("python 2", "py2", "2to3")):
+
+    for name, profile in profiles.items():
+        if not any(keyword.lower() in text for keyword in profile.keywords):
+            continue
+        scope = profile.default_scope or profile.scopes[0]
+        if "deprecated_api" in profile.scopes and any(
+            keyword in text for keyword in ("api", "废弃")
+        ):
+            scope = "deprecated_api"
         return {
-            "profile": "py2to3",
-            "scope": "syntax",
-            "needs_more_info": "",
-        }
-    if any(keyword in text for keyword in ("3.8", "升级", "新版", "python 3")):
-        scope = (
-            "deprecated_api"
-            if any(keyword in text for keyword in ("api", "废弃"))
-            else "syntax"
-        )
-        return {
-            "profile": "py3_upgrade",
+            "profile": name,
             "scope": scope,
             "needs_more_info": "",
         }
+
+    supported = "、".join(profiles)
     return {
         "profile": "unknown",
         "scope": "",
-        "needs_more_info": "未识别到支持的迁移目标，请描述目标版本或档案",
+        "needs_more_info": f"未识别到支持的迁移目标，可选 {supported}",
     }

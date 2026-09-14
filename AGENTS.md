@@ -24,7 +24,7 @@
 | `agent/loop.py` | 主循环 | 流程相关 |
 | `tools/` | 扫描、补丁、验证、报告 | 具体工具相关 |
 | `retrieval/` | 文档导入、BM25、向量、重排 | 检索相关 |
-| `migration/` | 迁移档案与转换规则；API 规则表说明见 `migration/rules/README.md` | transform 与 API 规则相关 |
+| `migration/` | 迁移档案与转换规则；档案定义见 `migration/profile_defs/README.md`，API 规则见 `migration/rules/README.md` | transform、档案与 API 规则相关 |
 | `knowledge_base/` | 按档案与主题组织的内置知识库 | 检索相关 |
 | `examples/` | 示例遗留项目与转换演示 | 演示相关 |
 | `evals/` | 检索与迁移评估（recall/nDCG/通过率） | 评估相关 |

@@ -1,0 +1,14 @@
+name: langchain_community
+description: LangChain Community 包拆分与废弃 API 迁移
+transform: py3_upgrade
+scopes:
+  - deprecated_api
+default_scope: deprecated_api
+knowledge_base:
+  - knowledge_base/langchain
+  - knowledge_base/topics
+keywords:
+  - langchain
+  - langchain community
+  - langchain_community
+priority: 20

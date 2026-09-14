@@ -75,7 +75,9 @@ $env:OPENAI_API_KEY = "你的密钥"
 - `升级到更高的 Python 3.x 版本`：使用 `py3_upgrade` 档案，处理新语法；
 - `升级 Python 并修复废弃 API`：使用 `py3_upgrade` 档案，处理
   `distutils`、`imp`、`datetime.utcnow` 等废弃 API；
-- 暂不支持 Django、Flask 等框架升级，回答涉及框架时会被要求重新描述。
+- `升级 LangChain Community 废弃 API`：使用 `langchain_community` 档案，
+  处理 Chroma、HuggingFace、Ollama、OpenAI 等集成包拆分；
+- 暂不支持 Django、Flask 等 Web 框架升级，回答涉及框架时会被要求重新描述。
 
 普通交互模式（命令行仍可省略路径，程序逐个提示输入）：
 
@@ -136,6 +138,9 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 .venv\Scripts\python.exe main.py --source examples\semantic_big_demo --output D:\big_migrated --agentic
 ```
 
+LangChain Community 迁移示例 `examples/langchain_legacy/` 用于验证
+Community 集成包拆分规则，说明见 `examples/langchain_legacy/README.md`。
+
 ## CLI 参数
 
 | 参数 | 说明 |
@@ -148,6 +153,8 @@ D:\IDE\VSCode\Migration_agent\.venv\Scripts\python.exe main.py
 | `--auto-approve` | 跳过 `medium/high` 计划审批 |
 | `--chat` | 使用对话引导模式确认迁移目标与路径，无需传入 `--source`/`--output` |
 | `--agentic` | 使用 LLM 工具决策循环，让模型自主调用工具 |
+| `--profile` | 指定迁移档案，覆盖 `config.yaml`，可选值见 `migration/profile_defs/` |
+| `--scope` | 指定迁移范围，覆盖 `config.yaml`，必须属于档案的 `scopes` |
 
 ## 工作流程
 
@@ -203,6 +210,12 @@ propose_edit（生成 diff 预览，不写文件）
 - 废弃 API 升级（distutils、imp、datetime.utcnow 等）；
 - Python 3.11+ 性能与新语法。
 
+`langchain/` 覆盖：
+
+- LangChain Community 集成拆分到独立包；
+- Chroma、PGVector、HuggingFace、Ollama、OpenAI、Anthropic 等迁移；
+- 导入路径、依赖更新与 LCEL 复杂迁移的人工确认提示。
+
 `topics/` 覆盖通用最佳实践（所有档案自动加载）：
 
 - 并发安全最佳实践；
@@ -212,11 +225,12 @@ propose_edit（生成 diff 预览，不写文件）
 - 测试迁移正确性。
 
 未传 `--docs` 时，主循环自动加载当前档案目录 + `topics/`。
+传入 `--docs` 会在此基础上追加文档，不会覆盖档案默认知识库。
 
 可追加自定义文档：
 
 ```powershell
-.venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --docs knowledge_base/py2to3 --docs D:\docs\company-standard
+.venv\Scripts\python.exe main.py --source D:\legacy --output D:\migrated --docs D:\docs\company-standard
 ```
 
 知识库缓存目录由 `config.yaml` 的 `retrieval.kb_dir` 配置，默认 `kb/`，
@@ -249,7 +263,7 @@ migration-agent/
 ├─ agent/                   # 状态机、护栏、LLM 适配、调度、评审
 ├─ tools/                   # 扫描、补丁、验证、报告
 ├─ retrieval/               # 文档导入、BM25、向量、重排、知识库
-├─ migration/               # 迁移档案与转换规则（API 规则表见 migration/rules/README.md）
+├─ migration/               # 迁移档案与转换规则（档案定义见 migration/profile_defs/README.md）
 ├─ knowledge_base/          # 按档案与主题组织的内置迁移知识库
 ├─ examples/                # 示例遗留项目与转换演示
 ├─ evals/                   # 检索、迁移、Agentic、编辑评估
@@ -284,6 +298,8 @@ migration-agent/
 
 - `AGENTS.md`：Agent 行为入口与文件索引；
 - `rules/README.md`：行为规则索引、优先级与红线；
+- `migration/profile_defs/README.md`：数据驱动档案定义与扩展示例；
+- `migration/rules/README.md`：API 规则字段、匹配类型与扩展示例；
 - `skills/`：技能使用说明；
 - `docs/`：架构、状态机、配置说明与调试排查。
 

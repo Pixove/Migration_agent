@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from agent.chat import ChatSession, _keyword_intent
+from agent.chat import ChatSession, _keyword_intent, build_intent_prompt
 from agent.config import load_config
 
 
@@ -15,9 +15,19 @@ class KeywordIntentTests(unittest.TestCase):
         intent = _keyword_intent("把 Python 3.8 升级到 3.13")
         self.assertEqual(intent["profile"], "py3_upgrade")
 
+    def test_langchain_community_goal(self):
+        intent = _keyword_intent("升级 LangChain Community 的废弃 API")
+        self.assertEqual(intent["profile"], "langchain_community")
+        self.assertEqual(intent["scope"], "deprecated_api")
+
     def test_unknown_goal(self):
         intent = _keyword_intent("把 Django 升级到最新")
         self.assertEqual(intent["profile"], "unknown")
+
+    def test_intent_prompt_is_built_from_profiles(self):
+        prompt = build_intent_prompt()
+        self.assertIn("langchain_community", prompt)
+        self.assertIn("deprecated_api", prompt)
 
 
 class FakeIntentLLM:

@@ -1,0 +1,14 @@
+name: py2to3
+description: Python 2 到 Python 3 基础语法迁移（历史档案）
+transform: py2to3
+scopes:
+  - syntax
+default_scope: syntax
+knowledge_base:
+  - knowledge_base/py2to3
+  - knowledge_base/topics
+keywords:
+  - python 2
+  - py2
+  - 2to3
+priority: 10
