@@ -270,6 +270,64 @@ class AgenticRunnerTests(unittest.TestCase):
                 )
             )
 
+    def test_agentic_behavior_verification_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            config.verification.enabled = True
+            config.verification.import_modules = ["sys"]
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(
+                    [{"thought": "完成", "action": "finish", "params": {}}]
+                ),
+            )
+            state = runner.run()
+            self.assertEqual(state.phase.value, "done")
+            self.assertTrue(
+                all(check["ok"] for check in state.verification_checks)
+            )
+            report = (state.audit_dir() / "report.md").read_text(
+                encoding="utf-8"
+            )
+            self.assertIn("行为验证", report)
+
+    def test_agentic_behavior_verification_failure_fails_task(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "src"
+            output = Path(tmp) / "out"
+            source.mkdir()
+            config = load_config("config.yaml")
+            config.retrieval.vector_enabled = False
+            config.retrieval.rerank_enabled = False
+            config.verification.enabled = True
+            config.verification.import_modules = [
+                "definitely_missing_module_xyz"
+            ]
+            runner = AgenticRunner(
+                config,
+                source,
+                output,
+                llm=FakeAgentLLM(
+                    [{"thought": "完成", "action": "finish", "params": {}}]
+                ),
+            )
+            with self.assertRaises(RuntimeError):
+                runner.run()
+            self.assertEqual(runner.state.phase.value, "failed")
+            self.assertTrue(
+                any(
+                    not check["ok"]
+                    for check in runner.state.verification_checks
+                )
+            )
+
     def test_agentic_gives_up_after_retries(self):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "src"

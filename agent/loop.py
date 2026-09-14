@@ -14,6 +14,7 @@ from migration.registry import load_profile
 from retrieval import HybridRetriever
 from retrieval.knowledge_base import KnowledgeBase
 from tools.scanner import FileInfo
+from tools.verifier import run_behavior_verification
 
 
 class MigrationRunner:
@@ -323,6 +324,7 @@ class MigrationRunner:
 
     def _finish(self) -> None:
         self.state.transition(Phase.VERIFY)
+        verification_failed = self._run_behavior_verification()
         self.state.transition(Phase.REPORT)
         result = self.dispatcher.call("write_report")
         if not result.success:
@@ -330,8 +332,29 @@ class MigrationRunner:
         report_name = Path(result.result["path"]).name
         self.state.add_audit("write_report", f"报告已生成: {report_name}")
         self.workspace.save_state()
+        if verification_failed and self.config.verification.fail_on_error:
+            raise RuntimeError("行为验证失败，详见审计与报告")
         self.state.transition(Phase.DONE)
         self.workspace.save_state()
+
+    def _run_behavior_verification(self) -> bool:
+        """执行配置的 import/命令验证，返回是否失败。"""
+        if not self.config.verification.enabled:
+            return False
+        result = run_behavior_verification(
+            self.state.output_root,
+            self.config.verification,
+        )
+        self.state.verification_checks = [
+            {"name": check.name, "ok": check.ok, "message": check.message}
+            for check in result.checks
+        ]
+        self.state.add_audit(
+            "verification",
+            f"行为验证{'通过' if result.success else '失败'}",
+            {"checks": self.state.verification_checks},
+        )
+        return not result.success
 
     def _default_confirm(self, item: PlanItem) -> bool:
         if self._approve_all_remaining:

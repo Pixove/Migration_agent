@@ -73,6 +73,7 @@ class MigrationState:
         self.plan_items: list[PlanItem] = []
         self.audit_entries: list[AuditEntry] = []
         self.unresolved_signals: list[dict] = []
+        self.verification_checks: list[dict] = []
 
     def transition(self, target: Phase) -> None:
         if target == Phase.FAILED:
@@ -120,6 +121,7 @@ class MigrationState:
             "plan_items": [asdict(item) for item in self.plan_items],
             "audit_entries": [asdict(entry) for entry in self.audit_entries],
             "unresolved_signals": self.unresolved_signals,
+            "verification_checks": self.verification_checks,
         }
 
     def save(self, path: str | Path) -> None:
@@ -148,6 +150,7 @@ class MigrationState:
             AuditEntry(**entry) for entry in data.get("audit_entries", [])
         ]
         state.unresolved_signals = data.get("unresolved_signals", [])
+        state.verification_checks = data.get("verification_checks", [])
         return state
 
     def _touch(self) -> None:

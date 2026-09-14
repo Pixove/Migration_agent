@@ -56,6 +56,15 @@ class MigrationConfig:
 
 
 @dataclass
+class VerificationConfig:
+    enabled: bool = False
+    timeout_seconds: int = 120
+    import_modules: list[str] = field(default_factory=list)
+    commands: list[str] = field(default_factory=list)
+    fail_on_error: bool = True
+
+
+@dataclass
 class GuardrailsConfig:
     allowed_tools: list[str] = field(
         default_factory=lambda: [
@@ -99,6 +108,7 @@ class AppConfig:
     workspace: WorkspaceConfig = field(default_factory=WorkspaceConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
     guardrails: GuardrailsConfig = field(default_factory=GuardrailsConfig)
+    verification: VerificationConfig = field(default_factory=VerificationConfig)
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -180,6 +190,22 @@ def _build_migration_config(section: dict[str, Any]) -> MigrationConfig:
     )
 
 
+def _build_verification_config(section: dict[str, Any]) -> VerificationConfig:
+    import_modules = _get(section, "import_modules", [])
+    commands = _get(section, "commands", [])
+    if not isinstance(import_modules, list):
+        raise ConfigError("verification.import_modules 必须是列表")
+    if not isinstance(commands, list):
+        raise ConfigError("verification.commands 必须是列表")
+    return VerificationConfig(
+        enabled=bool(_get(section, "enabled", False)),
+        timeout_seconds=int(_get(section, "timeout_seconds", 120)),
+        import_modules=[str(item) for item in import_modules],
+        commands=[str(item) for item in commands],
+        fail_on_error=bool(_get(section, "fail_on_error", True)),
+    )
+
+
 def _build_guardrails_config(section: dict[str, Any]) -> GuardrailsConfig:
     tools = _get(section, "allowed_tools", None)
     if not tools:
@@ -219,6 +245,9 @@ def load_config(path: str | Path) -> AppConfig:
         workspace=_build_workspace_config(_get(data, "workspace", {})),
         retrieval=_build_retrieval_config(_get(data, "retrieval", {})),
         guardrails=_build_guardrails_config(_get(data, "guardrails", {})),
+        verification=_build_verification_config(
+            _get(data, "verification", {})
+        ),
     )
 
 

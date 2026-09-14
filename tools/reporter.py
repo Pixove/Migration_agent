@@ -46,6 +46,18 @@ def write_report(state: MigrationState, workspace: AuditWorkspace) -> Path:
             )
         lines.append("")
 
+    if state.verification_checks:
+        lines.append("## 行为验证")
+        lines.append("")
+        for check in state.verification_checks:
+            status = "通过" if check.get("ok") else "失败"
+            message = check.get("message") or ""
+            suffix = f"：{message}" if message else ""
+            lines.append(
+                f"- {status}: `{check.get('name')}`{suffix}"
+            )
+        lines.append("")
+
     report_path = workspace.state.audit_dir() / "report.md"
     report_path.write_text("\n".join(lines), encoding="utf-8")
     return report_path

@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import sys
 from pathlib import Path
 
-from agent.config import load_config
+from agent.config import VerificationConfig, load_config
 from agent.guardrails import GuardrailError, PathGuard
 from agent.state import AuditWorkspace, MigrationState, PlanItem
 from tools.patcher import apply_plan_item
 from tools.reporter import write_report
 from tools.scanner import scan_project
-from tools.verifier import verify_file
+from tools.verifier import run_behavior_verification, verify_file
 
 
 def _load_guardrails_config():
@@ -122,6 +123,27 @@ class VerifierTests(unittest.TestCase):
             text.write_text("hello\n", encoding="utf-8")
             self.assertTrue(verify_file(text).success)
 
+    def test_behavior_import_verification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = VerificationConfig(
+                enabled=True,
+                import_modules=["sys", "definitely_missing_module_xyz"],
+            )
+            result = run_behavior_verification(tmp, config)
+            self.assertFalse(result.success)
+            self.assertEqual(len(result.checks), 2)
+            self.assertTrue(result.checks[0].ok)
+            self.assertFalse(result.checks[1].ok)
+
+    def test_behavior_command_verification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = VerificationConfig(
+                enabled=True,
+                commands=[f'"{sys.executable}" -c "import sys"'],
+            )
+            result = run_behavior_verification(tmp, config)
+            self.assertTrue(result.success)
+
 
 class ReporterTests(unittest.TestCase):
     def test_write_report(self):
@@ -132,6 +154,9 @@ class ReporterTests(unittest.TestCase):
             output.mkdir()
 
             state = MigrationState(source, output)
+            state.verification_checks = [
+                {"name": "import:sys", "ok": True, "message": ""}
+            ]
             state.add_plan_item(
                 PlanItem(
                     id="p1",
@@ -149,6 +174,7 @@ class ReporterTests(unittest.TestCase):
             content = report.read_text(encoding="utf-8")
             self.assertIn("# 迁移报告", content)
             self.assertIn("a.py", content)
+            self.assertIn("行为验证", content)
 
 
 if __name__ == "__main__":

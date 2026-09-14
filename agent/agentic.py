@@ -24,6 +24,7 @@ from retrieval import HybridRetriever
 from retrieval.knowledge_base import KnowledgeBase
 from tools.patcher import apply_plan_item
 from tools.reporter import write_report as generate_report
+from tools.verifier import run_behavior_verification
 
 DEFAULT_MAX_AGENT_ITERATIONS = 20
 MAX_HISTORY_MESSAGES = 24
@@ -1060,12 +1061,34 @@ class AgenticRunner:
         self.state.transition(Phase.VERIFY)
         self._finalize_missing_files()
         self._collect_unresolved_signals()
+        verification_failed = self._run_behavior_verification()
         self.state.transition(Phase.REPORT)
         report = generate_report(self.state, self.workspace)
         self.state.add_audit("agentic", f"报告已生成: {report.name}")
         self.workspace.save_state()
+        if verification_failed and self.config.verification.fail_on_error:
+            raise RuntimeError("行为验证失败，详见审计与报告")
         self.state.transition(Phase.DONE)
         self.workspace.save_state()
+
+    def _run_behavior_verification(self) -> bool:
+        """执行配置的 import/命令验证，返回是否失败。"""
+        if not self.config.verification.enabled:
+            return False
+        result = run_behavior_verification(
+            self.state.output_root,
+            self.config.verification,
+        )
+        self.state.verification_checks = [
+            {"name": check.name, "ok": check.ok, "message": check.message}
+            for check in result.checks
+        ]
+        self.state.add_audit(
+            "agentic",
+            f"行为验证{'通过' if result.success else '失败'}",
+            {"checks": self.state.verification_checks},
+        )
+        return not result.success
 
     def _finalize_missing_files(self) -> None:
         """把扫描清单中未写入输出目录的文件按原样补齐，保证项目完整。"""

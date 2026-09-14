@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import ast
+import re
+import shlex
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 @dataclass
@@ -40,3 +45,109 @@ def verify_file(path: str | Path) -> VerifierResult:
         checks.append(CheckResult("readable", True))
 
     return VerifierResult(success=all(check.ok for check in checks), checks=checks)
+
+
+_MODULE_NAME_RE = re.compile(
+    r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$"
+)
+
+
+def run_behavior_verification(
+    output_root: str | Path,
+    config: Any,
+) -> VerifierResult:
+    """在输出目录执行 import 检查与配置的白名单命令。"""
+    if not config.enabled:
+        return VerifierResult(
+            success=True,
+            checks=[CheckResult("behavior", True, "行为验证未启用")],
+        )
+
+    root = Path(output_root)
+    if not root.is_dir():
+        return VerifierResult(
+            success=False,
+            checks=[CheckResult("output", False, f"输出目录不存在: {root}")],
+        )
+
+    checks: list[CheckResult] = []
+    timeout = max(1, int(config.timeout_seconds))
+
+    for module in config.import_modules:
+        name = f"import:{module}"
+        if not _MODULE_NAME_RE.match(str(module)):
+            checks.append(
+                CheckResult(name, False, f"非法模块名: {module}")
+            )
+            continue
+        checks.append(
+            _run_command_check(
+                name,
+                [sys.executable, "-c", f"import {module}"],
+                cwd=root,
+                timeout=timeout,
+            )
+        )
+
+    for command in config.commands:
+        parts = _split_command(str(command))
+        if not parts:
+            checks.append(
+                CheckResult("command", False, f"空命令: {command}")
+            )
+            continue
+        checks.append(
+            _run_command_check(
+                f"command:{command}",
+                parts,
+                cwd=root,
+                timeout=timeout,
+            )
+        )
+
+    if not checks:
+        checks.append(CheckResult("behavior", True, "未配置行为验证项"))
+    return VerifierResult(
+        success=all(check.ok for check in checks),
+        checks=checks,
+    )
+
+
+def _split_command(command: str) -> list[str]:
+    parts = shlex.split(command, posix=False)
+    return [
+        part[1:-1]
+        if len(part) >= 2 and part[0] == part[-1] and part[0] in "\"'"
+        else part
+        for part in parts
+    ]
+
+
+def _run_command_check(
+    name: str,
+    parts: list[str],
+    *,
+    cwd: Path,
+    timeout: int,
+) -> CheckResult:
+    try:
+        result = subprocess.run(
+            parts,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return CheckResult(name, False, f"验证超时（{timeout} 秒）")
+    except OSError as exc:
+        return CheckResult(name, False, f"验证命令执行失败: {exc}")
+
+    if result.returncode == 0:
+        return CheckResult(name, True)
+    output = (result.stderr or result.stdout or "").strip()
+    return CheckResult(
+        name,
+        False,
+        f"退出码 {result.returncode}: {output[:500]}",
+    )
