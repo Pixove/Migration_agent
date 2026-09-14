@@ -17,6 +17,7 @@ from migration.scan_signals import (
     RULES_DIR,
     load_api_rules,
     parse_api_rules,
+    scan_python_signals,
 )
 from retrieval.documents import Document, RetrievalError, load_documents
 
@@ -264,6 +265,81 @@ def write_profile_candidate(
     return target
 
 
+def evaluate_candidate_coverage(
+    candidate_path: str | Path,
+    target_path: str | Path,
+) -> dict[str, Any]:
+    """用候选规则扫描目标项目，返回候选规则的命中与缺失情况。"""
+    candidate_file = Path(candidate_path)
+    data = yaml.safe_load(candidate_file.read_text(encoding="utf-8")) or {}
+    candidate_rules = list(
+        parse_api_rules(data.get("rules"), source=candidate_file)
+    )
+    candidate_apis = {_rule_api(rule) for rule in candidate_rules}
+
+    target = Path(target_path)
+    files = (
+        [target]
+        if target.is_file()
+        else sorted(target.rglob("*.py"))
+    )
+    detected: set[str] = set()
+    for file in files:
+        if not file.is_file():
+            continue
+        signals = scan_python_signals(
+            file.read_text(encoding="utf-8-sig", errors="ignore"),
+            file.as_posix(),
+            rules_path=[RULES_DIR, candidate_file],
+        )
+        detected.update(
+            str(signal.get("api", ""))
+            for signal in signals
+            if signal.get("api")
+        )
+
+    matched = sorted(candidate_apis.intersection(detected))
+    missing = sorted(candidate_apis - detected)
+    return {
+        "target": str(target),
+        "file_count": len([file for file in files if file.is_file()]),
+        "candidate_count": len(candidate_apis),
+        "matched_count": len(matched),
+        "matched": matched,
+        "missing": missing,
+    }
+
+
+def append_coverage_sections(
+    review_path: str | Path,
+    coverages: list[dict[str, Any]],
+) -> None:
+    """把候选覆盖验证结果追加到评审报告。"""
+    if not coverages:
+        return
+    lines = ["", "## 候选覆盖验证", ""]
+    for coverage in coverages:
+        lines.append(f"### {coverage['target']}")
+        lines.append("")
+        lines.append(f"- 扫描文件: {coverage['file_count']}")
+        lines.append(f"- 候选规则: {coverage['candidate_count']}")
+        lines.append(f"- 命中: {coverage['matched_count']}")
+        if coverage["missing"]:
+            lines.append("- 未命中:")
+            lines.extend(f"  - {item}" for item in coverage["missing"])
+        else:
+            lines.append("- 未命中: 无")
+        lines.append("")
+    with Path(review_path).open("a", encoding="utf-8") as handle:
+        handle.write("\n".join(lines))
+
+
+def _rule_api(rule: ApiRule) -> str:
+    if rule.type == "from_import":
+        return f"{rule.module}.{rule.name}"
+    return rule.name
+
+
 def _default_knowledge_base(paths: list[str | Path]) -> list[str]:
     roots: list[str] = []
     for path in paths:
@@ -373,6 +449,12 @@ def main(argv: list[str] | None = None) -> int:
         default=20,
         help="候选档案关键词匹配优先级",
     )
+    parser.add_argument(
+        "--verify-against",
+        action="append",
+        default=[],
+        help="用候选规则扫描目标文件或目录，可多次指定",
+    )
     args = parser.parse_args(argv)
 
     if not args.docs:
@@ -448,12 +530,22 @@ def main(argv: list[str] | None = None) -> int:
         profile_path=profile_path,
         profile_errors=profile_errors,
     )
+    coverages = [
+        evaluate_candidate_coverage(yaml_path, target)
+        for target in args.verify_against
+    ]
+    append_coverage_sections(review_path, coverages)
     print(f"文档数量: {len(documents)}")
     print(f"候选规则: {len(candidates)}")
     print(f"候选文件: {yaml_path}")
     if profile_path is not None:
         print(f"候选档案: {profile_path}")
     print(f"评审报告: {review_path}")
+    for coverage in coverages:
+        print(
+            f"覆盖验证 {coverage['target']}: "
+            f"{coverage['matched_count']}/{coverage['candidate_count']} 命中"
+        )
     if report.errors or profile_errors:
         print(
             f"存在 {len(report.errors) + len(profile_errors)} 个错误，"

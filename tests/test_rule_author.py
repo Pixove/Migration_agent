@@ -8,7 +8,9 @@ from pathlib import Path
 import yaml
 
 from migration.rule_author import (
+    append_coverage_sections,
     build_profile_candidate,
+    evaluate_candidate_coverage,
     extract_rule_candidates,
     load_document_text,
     validate_candidate_rules,
@@ -130,6 +132,33 @@ class RuleAuthorTests(unittest.TestCase):
             data = yaml.safe_load(path.read_text(encoding="utf-8"))
             self.assertEqual(data["name"], "new_profile")
             self.assertEqual(data["priority"], 25)
+
+    def test_candidate_coverage_against_example(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            docs = Path(tmp) / "guide.md"
+            docs.write_text("旧 API 迁移说明", encoding="utf-8")
+            target = Path(tmp) / "app.py"
+            target.write_text(
+                "from oldpkg import OldThing\n"
+                "value = OldThing()\n",
+                encoding="utf-8",
+            )
+            report = validate_candidate_rules(
+                [self._candidate()],
+                existing_rules=[],
+            )
+            yaml_path, review_path = write_candidate_files(
+                Path(tmp) / "candidates.yaml",
+                [self._candidate()],
+                report,
+                source_paths=[docs],
+            )
+            coverage = evaluate_candidate_coverage(yaml_path, target)
+            self.assertEqual(coverage["matched_count"], 1)
+            self.assertEqual(coverage["missing"], [])
+            append_coverage_sections(review_path, [coverage])
+            review = review_path.read_text(encoding="utf-8")
+            self.assertIn("候选覆盖验证", review)
 
 
 if __name__ == "__main__":

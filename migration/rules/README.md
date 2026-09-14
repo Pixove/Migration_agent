@@ -130,13 +130,14 @@ from langchain_community.vectorstores import Chroma
 .venv\Scripts\python.exe -m migration.rule_author `
   --docs D:\docs\langchain_upgrade.md `
   --profile-name langchain_community `
+  --verify-against examples\langchain_legacy `
   --output migration\rule_candidates\langchain.yaml
 ```
 
 生成结果包含两个文件：
 
 - `langchain.yaml`：候选规则，格式与正式规则文件一致；
-- `langchain.review.md`：校验结果、冲突提示和候选规则摘要。
+- `langchain.review.md`：校验结果、冲突提示、候选规则摘要和覆盖验证。
 
 传入 `--profile-name` 时还会生成：
 
@@ -148,6 +149,10 @@ from langchain_community.vectorstores import Chroma
 生成器不会自动启用规则。人工评审后，再决定是否移动到
 `migration/rules/` 或 `migration/rules/profiles/`，并在档案的 `rules`
 字段中引用。存在 ID 重复、匹配冲突或字段错误时，生成器返回非零退出码。
+
+`--verify-against` 会用“全局规则 + 候选规则”扫描指定文件或目录，并在
+评审报告中列出候选规则命中了哪些 API、哪些候选规则没有在示例代码中
+出现，方便判断规则是否过宽或缺少示例。
 
 ## 当前限制
 
