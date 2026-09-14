@@ -125,11 +125,11 @@ verification:
   timeout_seconds: 120
   # 输出目录中必须存在的文件（相对路径）
   required_files: []
-  # 当前 Python 环境中必须安装的依赖包
+  # 当前 Python 环境中必须安装的依赖包（当前 .venv）
   required_packages: []
-  # 在输出目录中使用当前 Python 解释器执行 import 检查
+  # 使用当前 Python 解释器执行 import 检查（当前 .venv）
   import_modules: []
-  # 在输出目录中执行的白名单命令（不会经过 shell）
+  # 在输出目录中执行的白名单命令；可指定目标项目解释器
   commands: []
   # 验证失败时是否让整个迁移任务失败
   fail_on_error: true
