@@ -8,6 +8,7 @@ from typing import Any
 
 from evals.agentic_evals import run_agentic_evals
 from evals.edit_evals import run_edit_evals
+from evals.e2e_evals import run_e2e_evals
 from evals.migration_evals import run_migration_evals
 from evals.quality_evals import run_quality_evals
 from evals.retrieval_evals import run_retrieval_evals
@@ -95,6 +96,7 @@ def _summary(report: dict) -> dict[str, Any]:
     edit = report.get("edit", {})
     rules = report.get("rules", {})
     quality = report.get("quality")
+    e2e = report.get("e2e")
     retrieval_summary: dict[str, Any] = {
         "avg_recall": retrieval.get("avg_recall"),
         "avg_ndcg": retrieval.get("avg_ndcg"),
@@ -141,6 +143,15 @@ def _summary(report: dict) -> dict[str, Any]:
             ),
             "behavior_success": quality.get("behavior", {}).get("success"),
         }
+    if e2e:
+        summary["e2e"] = {
+            "success": e2e.get("success"),
+            "phase": e2e.get("phase"),
+            "duration_seconds": e2e.get("duration_seconds"),
+            "unresolved_signal_count": e2e.get("quality", {}).get(
+                "unresolved_signal_count"
+            ),
+        }
     return summary
 
 
@@ -163,6 +174,40 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--quality-output",
         help="对已有迁移输出目录运行质量评估",
+    )
+    parser.add_argument(
+        "--e2e",
+        action="store_true",
+        help="运行真实 LLM 端到端迁移评估（需要 LLM）",
+    )
+    parser.add_argument(
+        "--e2e-source",
+        default="examples/semantic_big_demo",
+        help="端到端评估使用的示例项目",
+    )
+    parser.add_argument(
+        "--e2e-output",
+        help="端到端评估输出目录，默认 evals/e2e_runs/ 下按时间命名",
+    )
+    parser.add_argument(
+        "--e2e-profile",
+        help="端到端评估使用的迁移档案，默认按示例名推断",
+    )
+    parser.add_argument(
+        "--e2e-scope",
+        help="端到端评估使用的迁移范围",
+    )
+    parser.add_argument(
+        "--e2e-docs",
+        action="append",
+        default=[],
+        help="端到端评估追加的知识文档，可多次指定",
+    )
+    parser.add_argument(
+        "--e2e-command",
+        action="append",
+        default=[],
+        help="端到端评估后执行的行为验证命令，可多次指定",
     )
     args = parser.parse_args(argv)
 
@@ -203,6 +248,25 @@ def main(argv: list[str] | None = None) -> int:
     }
     if args.quality_output:
         report["quality"] = run_quality_evals(args.quality_output)
+    if args.e2e:
+        e2e_config = load_config("config.yaml")
+        if args.e2e_command:
+            e2e_config.verification.enabled = True
+            e2e_config.verification.commands = list(args.e2e_command)
+            e2e_config.verification.fail_on_error = False
+        e2e_output = args.e2e_output or (
+            Path("evals") / "e2e_runs" / datetime.now().strftime(
+                "%Y%m%d_%H%M%S"
+            )
+        )
+        report["e2e"] = run_e2e_evals(
+            args.e2e_source,
+            config=e2e_config,
+            output=e2e_output,
+            profile=args.e2e_profile,
+            scope=args.e2e_scope,
+            docs=list(args.e2e_docs),
+        )
     path = save_report(report, args.output)
     print(f"评估报告已保存: {path}")
     print(json.dumps(_summary(report), ensure_ascii=False, indent=2))

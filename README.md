@@ -299,6 +299,12 @@ migration-agent/
 .venv\Scripts\python.exe -m evals.run --quality-output D:\migrated
 ```
 
+真实 LLM 端到端评估（需要 LLM API，CI 不运行）：
+
+```powershell
+.venv\Scripts\python.exe -m evals.run --e2e --e2e-source examples\semantic_big_demo
+```
+
 详细说明见 `docs/06_评估系统.md`。
 
 ## CI

@@ -9,6 +9,7 @@ build/
 .migration-agent/
 kb/
 evals/reports/
+evals/e2e_runs/
 migration/rule_candidates/
 migration/profile_candidates/
 *.log
