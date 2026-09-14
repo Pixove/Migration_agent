@@ -14,6 +14,7 @@ from evals.edit_evals import (
 )
 from evals.migration_evals import run_migration_evals
 from evals.retrieval_evals import run_retrieval_evals
+from evals.rule_evals import run_rule_evals
 from evals.run import (
     align_edit_proposals,
     extract_edit_proposals,
@@ -35,6 +36,15 @@ class RetrievalEvalTests(unittest.TestCase):
         config.retrieval.rerank_enabled = False
         report = run_retrieval_evals(config=config)
         self.assertEqual(report["avg_recall"], 1.0)
+
+
+class RuleEvalTests(unittest.TestCase):
+    def test_rule_coverage_golden_cases(self):
+        report = run_rule_evals()
+        self.assertEqual(report["avg_recall"], 1.0)
+        self.assertTrue(
+            all(not case["missing"] for case in report["cases"])
+        )
 
 
 class AgenticEvalTests(unittest.TestCase):

@@ -1,0 +1,34 @@
+{
+  "cases": [
+    {
+      "name": "langchain_community_imports",
+      "path": "examples/langchain_legacy",
+      "expected": [
+        "langchain_community.chat_models.ChatAnthropic",
+        "langchain_community.chat_models.ChatGoogleGenerativeAI",
+        "langchain_community.chat_models.ChatOllama",
+        "langchain_community.chat_models.ChatOpenAI",
+        "langchain_community.embeddings.HuggingFaceBgeEmbeddings",
+        "langchain_community.embeddings.HuggingFaceEmbeddings",
+        "langchain_community.embeddings.OllamaEmbeddings",
+        "langchain_community.embeddings.OpenAIEmbeddings",
+        "langchain_community.llms.Anthropic",
+        "langchain_community.llms.Ollama",
+        "langchain_community.llms.OpenAI",
+        "langchain_community.vectorstores.Chroma",
+        "langchain_community.vectorstores.PGVector",
+        "langchain_community.vectorstores.Pinecone",
+        "langchain_community.vectorstores.Qdrant"
+      ]
+    },
+    {
+      "name": "python3_semantic_signals",
+      "path": "examples/semantic_big_demo",
+      "expected": [
+        "__del__",
+        "datetime.utcnow",
+        "datetime.utcfromtimestamp"
+      ]
+    }
+  ]
+}

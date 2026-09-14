@@ -10,6 +10,7 @@ from evals.agentic_evals import run_agentic_evals
 from evals.edit_evals import run_edit_evals
 from evals.migration_evals import run_migration_evals
 from evals.retrieval_evals import run_retrieval_evals
+from evals.rule_evals import run_rule_evals
 
 REPORT_DIR = Path(__file__).parent / "reports"
 
@@ -91,6 +92,7 @@ def _summary(report: dict) -> dict[str, Any]:
     migration = report.get("migration", {})
     agentic = report.get("agentic", {}).get("result", {})
     edit = report.get("edit", {})
+    rules = report.get("rules", {})
     retrieval_summary: dict[str, Any] = {
         "avg_recall": retrieval.get("avg_recall"),
         "avg_ndcg": retrieval.get("avg_ndcg"),
@@ -121,6 +123,10 @@ def _summary(report: dict) -> dict[str, Any]:
             "passed": edit.get("passed"),
             "total": edit.get("total"),
             "edit_accuracy": edit.get("edit_accuracy"),
+        },
+        "rules": {
+            "total": rules.get("total"),
+            "avg_recall": rules.get("avg_recall"),
         },
     }
 
@@ -176,6 +182,7 @@ def main(argv: list[str] | None = None) -> int:
             completed=completed,
         ),
         "edit": run_edit_evals(proposals=edit_proposals),
+        "rules": run_rule_evals(),
     }
     path = save_report(report, args.output)
     print(f"评估报告已保存: {path}")
