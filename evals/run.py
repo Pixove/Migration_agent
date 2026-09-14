@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from agent.config import load_config
 from evals.agentic_evals import run_agentic_evals
 from evals.edit_evals import run_edit_evals
 from evals.e2e_evals import run_e2e_evals

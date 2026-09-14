@@ -27,7 +27,7 @@ class ConfigFallbackTests(unittest.TestCase):
         self.assertEqual(config.guardrails.max_refactor_ratio, 0.3)
 
     def test_default_verification_config(self):
-        config = load_config("config.yaml")
+        config = load_config("config.example.yaml")
         self.assertFalse(config.verification.enabled)
         self.assertEqual(config.verification.required_files, [])
         self.assertEqual(config.verification.required_packages, [])
