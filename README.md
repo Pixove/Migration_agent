@@ -222,23 +222,10 @@ propose_edit（生成 diff 预览，不写文件）
 知识库缓存目录由 `config.yaml` 的 `retrieval.kb_dir` 配置，默认 `kb/`，
 已被 `.gitignore` 忽略。
 
-API 迁移信号由 `migration/rules/*.yaml` 规则表驱动，AST 扫描器会合并
-目录下的全部规则文件并生成待处理文件。支持 `function_def`、`call`、
-`attribute`、`module`、`from_import` 五种规则类型；新增废弃 API 时，
-只需增加一条规则，信号会自动进入批次注入、评审与定向修复流程。
-
-例如指定 LangChain Community 的导入迁移：
-
-```yaml
-- id: langchain_community_chroma_import
-  kind: deprecated_api
-  type: from_import
-  module: langchain_community.vectorstores
-  name: Chroma
-  replacement: from langchain_chroma import Chroma
-  message: Chroma 已迁移到 langchain_chroma
-  docs: langchain_community_upgrade
-```
+可迁移 API 信号由 `migration/rules/*.yaml` 规则表驱动，支持
+`function_def`、`call`、`attribute`、`module`、`from_import` 五类规则。
+规则字段、匹配语义、校验方式与扩展示例见
+`migration/rules/README.md`。
 
 ## 输出与审计
 
@@ -262,11 +249,11 @@ migration-agent/
 ├─ agent/                   # 状态机、护栏、LLM 适配、调度、评审
 ├─ tools/                   # 扫描、补丁、验证、报告
 ├─ retrieval/               # 文档导入、BM25、向量、重排、知识库
-├─ migration/               # 迁移档案（py2to3/py3_upgrade）与转换规则
+├─ migration/               # 迁移档案与转换规则（API 规则表见 migration/rules/README.md）
 ├─ knowledge_base/          # 按档案与主题组织的内置迁移知识库
 ├─ examples/                # 示例遗留项目与转换演示
 ├─ evals/                   # 检索、迁移、Agentic、编辑评估
-├─ rules/                   # 中文规则文档
+├─ rules/                   # Agent 行为规则（见 rules/README.md）
 ├─ skills/                  # 中文技能文档
 ├─ docs/                    # 中文架构与调试文档
 └─ tests/                   # 单元测试
@@ -296,7 +283,7 @@ migration-agent/
 ## 文档入口
 
 - `AGENTS.md`：Agent 行为入口与文件索引；
-- `rules/`：运行时行为规则与红线；
+- `rules/README.md`：行为规则索引、优先级与红线；
 - `skills/`：技能使用说明；
 - `docs/`：架构、状态机、配置说明与调试排查。
 
