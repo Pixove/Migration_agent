@@ -47,7 +47,7 @@ def get_profiles() -> dict[str, MigrationProfile]:
             data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except (OSError, yaml.YAMLError) as exc:
             raise ValueError(f"读取迁移档案失败: {path}: {exc}") from exc
-        profile = _parse_profile(data, path)
+        profile = parse_profile_definition(data, path)
         if profile.name in profiles:
             raise ValueError(f"迁移档案名称重复: {profile.name}（{path}）")
         profiles[profile.name] = profile
@@ -63,9 +63,13 @@ def get_profiles() -> dict[str, MigrationProfile]:
     )
 
 
-def _parse_profile(data: Any, path: Path) -> MigrationProfile:
+def parse_profile_definition(
+    data: Any,
+    source: str | Path = "<profile>",
+) -> MigrationProfile:
+    """校验并解析单个档案定义，供注册表和档案生成器复用。"""
     if not isinstance(data, dict):
-        raise ValueError(f"迁移档案必须是对象: {path}")
+        raise ValueError(f"迁移档案必须是对象: {source}")
 
     name = str(data.get("name", "")).strip()
     description = str(data.get("description", "")).strip()
@@ -74,7 +78,7 @@ def _parse_profile(data: Any, path: Path) -> MigrationProfile:
     rules = _string_list(data.get("rules"))
     if not name or not description or not scopes or not knowledge_base:
         raise ValueError(
-            f"迁移档案缺少 name/description/scopes/knowledge_base: {path}"
+            f"迁移档案缺少 name/description/scopes/knowledge_base: {source}"
         )
 
     transform_name = data.get("transform")
@@ -82,7 +86,7 @@ def _parse_profile(data: Any, path: Path) -> MigrationProfile:
         transform_name = str(transform_name)
         if transform_name not in _TRANSFORMS:
             raise ValueError(
-                f"迁移档案使用了未登记转换器 {transform_name}: {path}"
+                f"迁移档案使用了未登记转换器 {transform_name}: {source}"
             )
         transform = _TRANSFORMS[transform_name]
     else:
@@ -91,7 +95,7 @@ def _parse_profile(data: Any, path: Path) -> MigrationProfile:
     default_scope = str(data.get("default_scope") or scopes[0])
     if default_scope not in scopes:
         raise ValueError(
-            f"迁移档案 default_scope={default_scope} 不在 scopes 中: {path}"
+            f"迁移档案 default_scope={default_scope} 不在 scopes 中: {source}"
         )
 
     return MigrationProfile(

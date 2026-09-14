@@ -50,6 +50,17 @@ priority: 20
 完成。只有需要 AST/正则自动改写的档案，才需要额外实现 Python transform
 函数，并在 `migration/registry.py` 的转换器注册表中登记名称。
 
+也可以从知识文档生成候选档案：
+
+```powershell
+.venv\Scripts\python.exe -m migration.rule_author `
+  --docs D:\docs\pandas_upgrade.md `
+  --profile-name pandas_upgrade
+```
+
+生成器会在 `migration/profile_candidates/` 下输出候选 YAML，并生成
+`.review.md` 评审报告。确认后再移动到本目录，不会自动注册。
+
 ## 与知识库、规则表的关系
 
 - `knowledge_base`：档案默认加载哪些知识文档；

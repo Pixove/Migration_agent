@@ -11,6 +11,7 @@ import yaml
 
 from agent.config import ConfigError, load_config
 from agent.llm import LLMClient, LLMError, create_llm_client, parse_json_object
+from migration.registry import get_profiles, parse_profile_definition
 from migration.scan_signals import (
     ApiRule,
     RULES_DIR,
@@ -21,6 +22,7 @@ from retrieval.documents import Document, RetrievalError, load_documents
 
 DEFAULT_MAX_CHARS = 16000
 DEFAULT_CANDIDATE_DIR = Path(__file__).parent / "rule_candidates"
+DEFAULT_PROFILE_CANDIDATE_DIR = Path(__file__).parent / "profile_candidates"
 
 RULE_AUTHOR_PROMPT = (
     "你是企业级代码迁移规则抽取器。请从给定知识文档中抽取可以用于 AST "
@@ -142,6 +144,9 @@ def write_candidate_files(
     report: CandidateReport,
     *,
     source_paths: list[str | Path],
+    profile_candidate: dict[str, Any] | None = None,
+    profile_path: str | Path | None = None,
+    profile_errors: list[str] | None = None,
 ) -> tuple[Path, Path]:
     """写入候选 YAML 与人工评审报告，不自动激活规则。"""
     target = Path(output)
@@ -175,6 +180,20 @@ def write_candidate_files(
         lines.append("")
         lines.extend(f"- {item}" for item in report.warnings)
         lines.append("")
+    if profile_candidate is not None:
+        lines.append("## 档案候选")
+        lines.append("")
+        lines.append(f"- 候选文件: `{profile_path}`")
+        lines.append(
+            "- 正式规则路径: "
+            + ", ".join(profile_candidate.get("rules", []))
+        )
+        if profile_errors:
+            lines.append("- 校验错误:")
+            lines.extend(f"  - {item}" for item in profile_errors)
+        else:
+            lines.append("- 校验: 通过")
+        lines.append("")
     lines.append("## 候选规则")
     lines.append("")
     for rule in report.rules:
@@ -182,8 +201,78 @@ def write_candidate_files(
             f"- `{rule.id}`: {rule.type} {rule.name} "
             f"-> {rule.replacement or '(见 docs)'}"
         )
+    lines.append("")
+    lines.append("## 启用步骤")
+    lines.append("")
+    lines.append("1. 评审候选规则和档案定义；")
+    lines.append("2. 将规则移到 `migration/rules/profiles/<name>.yaml`；")
+    lines.append("3. 将档案移到 `migration/profile_defs/<name>.yaml`；")
+    lines.append("4. 运行测试与 `evals.run`。")
     review.write_text("\n".join(lines), encoding="utf-8")
     return target, review
+
+
+def build_profile_candidate(
+    name: str,
+    candidates: list[dict[str, Any]],
+    source_paths: list[str | Path],
+    *,
+    description: str = "",
+    scopes: list[str] | None = None,
+    default_scope: str = "",
+    knowledge_base: list[str] | None = None,
+    keywords: list[str] | None = None,
+    transform: str | None = None,
+    priority: int = 20,
+) -> dict[str, Any]:
+    """根据候选规则和知识文档构造候选档案定义。"""
+    if not name.strip():
+        raise ValueError("档案名不能为空")
+    scope_list = scopes or (
+        ["deprecated_api"] if candidates else ["syntax"]
+    )
+    default = default_scope or scope_list[0]
+    return {
+        "name": name,
+        "description": description or f"从知识文档生成的迁移档案: {name}",
+        "transform": transform,
+        "scopes": scope_list,
+        "default_scope": default,
+        "knowledge_base": knowledge_base
+        or _default_knowledge_base(source_paths),
+        "rules": (
+            [f"migration/rules/profiles/{name}.yaml"]
+            if candidates
+            else []
+        ),
+        "keywords": keywords or [name, name.replace("_", " ")],
+        "priority": priority,
+    }
+
+
+def write_profile_candidate(
+    output: str | Path,
+    profile: dict[str, Any],
+) -> Path:
+    """写入候选档案定义，不自动注册。"""
+    target = Path(output)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        yaml.safe_dump(profile, allow_unicode=True, sort_keys=False),
+        encoding="utf-8",
+    )
+    return target
+
+
+def _default_knowledge_base(paths: list[str | Path]) -> list[str]:
+    roots: list[str] = []
+    for path in paths:
+        target = Path(path)
+        root = target if target.is_dir() else target.parent
+        text = root.as_posix()
+        if text not in roots:
+            roots.append(text)
+    return roots
 
 
 def _load_all_active_rules() -> list[ApiRule]:
@@ -243,6 +332,47 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_MAX_CHARS,
         help="传给模型的文档最大字符数",
     )
+    parser.add_argument(
+        "--profile-name",
+        help="同时生成候选档案时的档案名",
+    )
+    parser.add_argument(
+        "--profile-output",
+        help="候选档案输出路径，默认 migration/profile_candidates/",
+    )
+    parser.add_argument(
+        "--knowledge-base",
+        action="append",
+        default=[],
+        help="候选档案引用的知识库目录，可多次指定",
+    )
+    parser.add_argument(
+        "--description",
+        default="",
+        help="候选档案描述",
+    )
+    parser.add_argument(
+        "--keyword",
+        action="append",
+        default=[],
+        help="候选档案关键词，可多次指定",
+    )
+    parser.add_argument(
+        "--scope",
+        action="append",
+        default=[],
+        help="候选档案范围，可多次指定",
+    )
+    parser.add_argument(
+        "--transform",
+        help="候选档案转换器名称，默认为空",
+    )
+    parser.add_argument(
+        "--priority",
+        type=int,
+        default=20,
+        help="候选档案关键词匹配优先级",
+    )
     args = parser.parse_args(argv)
 
     if not args.docs:
@@ -274,6 +404,37 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     report = validate_candidate_rules(candidates)
 
+    profile_candidate: dict[str, Any] | None = None
+    profile_path: Path | None = None
+    profile_errors: list[str] = []
+    if args.profile_name:
+        if args.profile_name in get_profiles():
+            print(f"档案已存在，拒绝生成候选: {args.profile_name}")
+            return 1
+        profile_candidate = build_profile_candidate(
+            args.profile_name,
+            candidates,
+            args.docs,
+            description=args.description,
+            scopes=args.scope or None,
+            knowledge_base=args.knowledge_base or None,
+            keywords=args.keyword or None,
+            transform=args.transform,
+            priority=args.priority,
+        )
+        try:
+            parse_profile_definition(
+                profile_candidate,
+                source="<profile-candidate>",
+            )
+        except ValueError as exc:
+            profile_errors.append(str(exc))
+        profile_path = Path(args.profile_output) if args.profile_output else (
+            DEFAULT_PROFILE_CANDIDATE_DIR
+            / f"{args.profile_name}.yaml"
+        )
+        write_profile_candidate(profile_path, profile_candidate)
+
     output = Path(args.output) if args.output else (
         DEFAULT_CANDIDATE_DIR
         / f"candidates_{datetime.now():%Y%m%d_%H%M%S}.yaml"
@@ -283,13 +444,21 @@ def main(argv: list[str] | None = None) -> int:
         candidates,
         report,
         source_paths=args.docs,
+        profile_candidate=profile_candidate,
+        profile_path=profile_path,
+        profile_errors=profile_errors,
     )
     print(f"文档数量: {len(documents)}")
     print(f"候选规则: {len(candidates)}")
     print(f"候选文件: {yaml_path}")
+    if profile_path is not None:
+        print(f"候选档案: {profile_path}")
     print(f"评审报告: {review_path}")
-    if report.errors:
-        print(f"存在 {len(report.errors)} 个错误，规则不会自动启用")
+    if report.errors or profile_errors:
+        print(
+            f"存在 {len(report.errors) + len(profile_errors)} 个错误，"
+            "候选不会自动启用"
+        )
         return 1
     return 0
 

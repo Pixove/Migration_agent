@@ -10,4 +10,5 @@ build/
 kb/
 evals/reports/
 migration/rule_candidates/
+migration/profile_candidates/
 *.log

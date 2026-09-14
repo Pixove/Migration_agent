@@ -129,6 +129,7 @@ from langchain_community.vectorstores import Chroma
 ```powershell
 .venv\Scripts\python.exe -m migration.rule_author `
   --docs D:\docs\langchain_upgrade.md `
+  --profile-name langchain_community `
   --output migration\rule_candidates\langchain.yaml
 ```
 
@@ -136,6 +137,13 @@ from langchain_community.vectorstores import Chroma
 
 - `langchain.yaml`：候选规则，格式与正式规则文件一致；
 - `langchain.review.md`：校验结果、冲突提示和候选规则摘要。
+
+传入 `--profile-name` 时还会生成：
+
+- `migration/profile_candidates/langchain_community.yaml`：候选档案定义；
+- 档案中自动引用 `migration/rules/profiles/langchain_community.yaml`；
+- 可通过 `--knowledge-base`、`--scope`、`--keyword`、`--description`、
+  `--priority` 覆盖自动推断结果。
 
 生成器不会自动启用规则。人工评审后，再决定是否移动到
 `migration/rules/` 或 `migration/rules/profiles/`，并在档案的 `rules`
