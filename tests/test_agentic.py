@@ -290,6 +290,7 @@ class AgenticRunnerTests(unittest.TestCase):
             )
             state = runner.run()
             self.assertEqual(state.phase.value, "done")
+            self.assertEqual(state.verification_status, "passed")
             self.assertTrue(
                 all(check["ok"] for check in state.verification_checks)
             )
@@ -321,6 +322,7 @@ class AgenticRunnerTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 runner.run()
             self.assertEqual(runner.state.phase.value, "failed")
+            self.assertEqual(runner.state.verification_status, "failed")
             self.assertTrue(
                 any(
                     not check["ok"]

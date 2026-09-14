@@ -76,8 +76,20 @@ class QualityEvalTests(unittest.TestCase):
             config.verification.import_modules = ["sys"]
             report = run_quality_evals(root, config)
             self.assertEqual(report["syntax_pass_rate"], 1.0)
+            self.assertEqual(report["behavior"]["status"], "passed")
             self.assertTrue(report["behavior"]["success"])
             self.assertTrue(report["overall_success"])
+
+    def test_quality_unverified_behavior_blocks_success(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "app.py").write_text("x = 1\n", encoding="utf-8")
+            config = load_config("config.example.yaml")
+            config.verification.enabled = True
+            report = run_quality_evals(root, config)
+            self.assertEqual(report["behavior"]["status"], "unverified")
+            self.assertFalse(report["behavior"]["success"])
+            self.assertFalse(report["overall_success"])
 
     def test_quality_ignores_excluded_virtualenv_dirs(self):
         with tempfile.TemporaryDirectory() as tmp:

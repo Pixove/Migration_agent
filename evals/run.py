@@ -142,6 +142,7 @@ def _summary(report: dict) -> dict[str, Any]:
             "unresolved_signal_count": quality.get(
                 "unresolved_signal_count"
             ),
+            "behavior_status": quality.get("behavior", {}).get("status"),
             "behavior_success": quality.get("behavior", {}).get("success"),
         }
     if e2e:
@@ -152,6 +153,9 @@ def _summary(report: dict) -> dict[str, Any]:
             "unresolved_signal_count": e2e.get("quality", {}).get(
                 "unresolved_signal_count"
             ),
+            "behavior_status": e2e.get("quality", {})
+            .get("behavior", {})
+            .get("status"),
         }
     return summary
 

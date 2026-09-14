@@ -64,9 +64,16 @@ def write_report(state: MigrationState, workspace: AuditWorkspace) -> Path:
             lines.append(detail)
         lines.append("")
 
-    if state.verification_checks:
+    if state.verification_status != "disabled" or state.verification_checks:
         lines.append("## 行为验证")
         lines.append("")
+        status_label = {
+            "passed": "通过",
+            "failed": "失败",
+            "unverified": "未验证",
+            "disabled": "未启用",
+        }.get(state.verification_status, state.verification_status)
+        lines.append(f"- 状态: {status_label}")
         for check in state.verification_checks:
             status = "通过" if check.get("ok") else "失败"
             message = check.get("message") or ""

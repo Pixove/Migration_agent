@@ -161,6 +161,7 @@ class VerifierTests(unittest.TestCase):
             )
             result = run_behavior_verification(tmp, config)
             self.assertFalse(result.success)
+            self.assertEqual(result.status, "failed")
             self.assertEqual(len(result.checks), 2)
             self.assertTrue(result.checks[0].ok)
             self.assertFalse(result.checks[1].ok)
@@ -173,6 +174,7 @@ class VerifierTests(unittest.TestCase):
             )
             result = run_behavior_verification(tmp, config)
             self.assertTrue(result.success)
+            self.assertEqual(result.status, "passed")
 
     def test_behavior_required_files_and_packages(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -243,6 +245,14 @@ class VerifierTests(unittest.TestCase):
                 any(check.name == "import:sys" for check in result.checks)
             )
 
+    def test_behavior_enabled_without_checks_is_unverified(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = VerificationConfig(enabled=True)
+            result = run_behavior_verification(tmp, config)
+            self.assertTrue(result.success)
+            self.assertEqual(result.status, "unverified")
+            self.assertEqual(result.checks, [])
+
 
 class ReporterTests(unittest.TestCase):
     def test_write_report(self):
@@ -255,6 +265,7 @@ class ReporterTests(unittest.TestCase):
             state = MigrationState(source, output)
             state.profile = "py3_upgrade"
             state.scope = "deprecated_api"
+            state.verification_status = "passed"
             state.verification_checks = [
                 {"name": "import:sys", "ok": True, "message": ""}
             ]
@@ -296,6 +307,7 @@ class ReporterTests(unittest.TestCase):
             self.assertIn("datetime_utcnow", content)
             self.assertIn("01_废弃API升级", content)
             self.assertIn("行为验证", content)
+            self.assertIn("状态: 通过", content)
 
 
 if __name__ == "__main__":

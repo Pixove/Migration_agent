@@ -61,12 +61,18 @@ def run_quality_evals(
             )
         )
 
-    behavior: dict = {"enabled": config.verification.enabled}
+    behavior: dict = {
+        "enabled": config.verification.enabled,
+        "status": "disabled",
+        "success": None,
+        "checks": [],
+    }
     if config.verification.enabled:
         result = run_behavior_verification(root, config.verification)
         behavior.update(
             {
-                "success": result.success,
+                "status": result.status,
+                "success": result.status == "passed",
                 "checks": [
                     {
                         "name": check.name,
@@ -80,7 +86,10 @@ def run_quality_evals(
 
     syntax_passed = len(py_files) - len(syntax_failures)
     syntax_rate = syntax_passed / len(py_files) if py_files else 1.0
-    behavior_ok = behavior.get("success", True)
+    behavior_ok = (
+        not config.verification.enabled
+        or behavior["status"] == "passed"
+    )
     overall_success = (
         syntax_rate == 1.0
         and not unresolved_signals

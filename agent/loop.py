@@ -374,16 +374,25 @@ class MigrationRunner:
             self.state.output_root,
             self.config.verification,
         )
+        self.state.verification_status = result.status
         self.state.verification_checks = [
             {"name": check.name, "ok": check.ok, "message": check.message}
             for check in result.checks
         ]
+        status_label = {
+            "passed": "通过",
+            "failed": "失败",
+            "unverified": "未验证",
+        }.get(result.status, result.status)
         self.state.add_audit(
             "verification",
-            f"行为验证{'通过' if result.success else '失败'}",
-            {"checks": self.state.verification_checks},
+            f"行为验证{status_label}",
+            {
+                "status": result.status,
+                "checks": self.state.verification_checks,
+            },
         )
-        return not result.success
+        return result.status == "failed"
 
     def _default_confirm(self, item: PlanItem) -> bool:
         if self._approve_all_remaining:

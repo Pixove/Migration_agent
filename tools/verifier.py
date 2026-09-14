@@ -22,6 +22,7 @@ class CheckResult:
 class VerifierResult:
     success: bool
     checks: list[CheckResult]
+    status: str = "passed"
 
 
 def verify_file(path: str | Path) -> VerifierResult:
@@ -33,6 +34,7 @@ def verify_file(path: str | Path) -> VerifierResult:
         return VerifierResult(
             success=False,
             checks=[CheckResult("exists", False, f"文件不存在: {target}")],
+            status="failed",
         )
     checks.append(CheckResult("exists", True))
 
@@ -45,7 +47,12 @@ def verify_file(path: str | Path) -> VerifierResult:
     else:
         checks.append(CheckResult("readable", True))
 
-    return VerifierResult(success=all(check.ok for check in checks), checks=checks)
+    success = all(check.ok for check in checks)
+    return VerifierResult(
+        success=success,
+        checks=checks,
+        status="passed" if success else "failed",
+    )
 
 
 _MODULE_NAME_RE = re.compile(
@@ -61,7 +68,8 @@ def run_behavior_verification(
     if not config.enabled:
         return VerifierResult(
             success=True,
-            checks=[CheckResult("behavior", True, "行为验证未启用")],
+            checks=[],
+            status="disabled",
         )
 
     root = Path(output_root)
@@ -69,6 +77,7 @@ def run_behavior_verification(
         return VerifierResult(
             success=False,
             checks=[CheckResult("output", False, f"输出目录不存在: {root}")],
+            status="failed",
         )
 
     checks: list[CheckResult] = []
@@ -152,10 +161,19 @@ def run_behavior_verification(
         )
 
     if not checks:
-        checks.append(CheckResult("behavior", True, "未配置行为验证项"))
+        return VerifierResult(
+            success=True,
+            checks=[],
+            status="unverified",
+        )
     return VerifierResult(
         success=all(check.ok for check in checks),
         checks=checks,
+        status=(
+            "passed"
+            if all(check.ok for check in checks)
+            else "failed"
+        ),
     )
 
 

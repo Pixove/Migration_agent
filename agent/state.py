@@ -76,6 +76,7 @@ class MigrationState:
         self.audit_entries: list[AuditEntry] = []
         self.unresolved_signals: list[dict] = []
         self.verification_checks: list[dict] = []
+        self.verification_status = "disabled"
 
     def transition(self, target: Phase) -> None:
         if target == Phase.FAILED:
@@ -126,6 +127,7 @@ class MigrationState:
             "audit_entries": [asdict(entry) for entry in self.audit_entries],
             "unresolved_signals": self.unresolved_signals,
             "verification_checks": self.verification_checks,
+            "verification_status": self.verification_status,
         }
 
     def save(self, path: str | Path) -> None:
@@ -157,6 +159,19 @@ class MigrationState:
         ]
         state.unresolved_signals = data.get("unresolved_signals", [])
         state.verification_checks = data.get("verification_checks", [])
+        state.verification_status = data.get("verification_status", "")
+        if not state.verification_status:
+            if state.verification_checks:
+                state.verification_status = (
+                    "passed"
+                    if all(
+                        check.get("ok")
+                        for check in state.verification_checks
+                    )
+                    else "failed"
+                )
+            else:
+                state.verification_status = "disabled"
         return state
 
     def _touch(self) -> None:
