@@ -10,6 +10,17 @@
 
 ## 生成候选规则和档案
 
+最小命令只需要文档、档案名和覆盖验证目标：
+
+```powershell
+.venv\Scripts\python.exe -m migration.rule_author `
+  --docs examples\rule_author_demo\knowledge\samplelib_upgrade.md `
+  --profile-name samplelib_upgrade `
+  --verify-against examples\rule_author_demo\legacy_app.py
+```
+
+其他参数都有默认值。需要固定输出文件名时，使用完整命令：
+
 ```powershell
 .venv\Scripts\python.exe -m migration.rule_author `
   --docs examples\rule_author_demo\knowledge\samplelib_upgrade.md `

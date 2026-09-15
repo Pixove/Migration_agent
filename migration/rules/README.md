@@ -126,6 +126,41 @@ from langchain_community.vectorstores import Chroma
 
 可以使用规则生成器从 Markdown、TXT 或 PDF 文档抽取候选规则：
 
+最小命令只需要 `--docs`：
+
+```powershell
+.venv\Scripts\python.exe -m migration.rule_author `
+  --docs D:\docs\langchain_upgrade.md
+```
+
+需要同时生成候选档案时，增加 `--profile-name`：
+
+```powershell
+.venv\Scripts\python.exe -m migration.rule_author `
+  --docs D:\docs\langchain_upgrade.md `
+  --profile-name langchain_community
+```
+
+生成模式的参数说明：
+
+| 参数 | 要求 | 默认值 / 说明 |
+| --- | --- | --- |
+| `--docs` | 必填，至少一个 | 输入文档路径 |
+| `--profile-name` | 可选 | 填写后同时生成候选档案 |
+| `--output` | 可选 | `migration/rule_candidates/时间戳.yaml` |
+| `--profile-output` | 可选 | `migration/profile_candidates/<profile>.yaml` |
+| `--config` | 可选 | `config.yaml` |
+| `--max-chars` | 可选 | `16000` |
+| `--knowledge-base` | 可选 | 默认使用输入文档所在目录 |
+| `--description` | 可选 | 自动生成档案描述 |
+| `--keyword` | 可选，可重复 | 根据档案名自动生成 |
+| `--scope` | 可选，可重复 | 有候选规则时默认 `deprecated_api` |
+| `--transform` | 可选 | 默认不使用确定性 transform |
+| `--priority` | 可选 | `20` |
+| `--verify-against` | 可选，可重复 | 用目标文件或目录验证候选覆盖率 |
+
+需要固定输出路径时使用完整命令：
+
 ```powershell
 .venv\Scripts\python.exe -m migration.rule_author `
   --docs D:\docs\langchain_upgrade.md `
@@ -155,6 +190,17 @@ from langchain_community.vectorstores import Chroma
 出现，方便判断规则是否过宽或缺少示例。
 
 确认候选可以启用后，使用显式批准命令安装：
+
+审批模式的参数说明：
+
+| 参数 | 要求 | 默认值 / 说明 |
+| --- | --- | --- |
+| `--approve` | 必填 | 进入审批安装模式 |
+| `--rules-candidate` | 必填 | 待安装的候选规则 YAML |
+| `--profile-candidate` | 可选 | 同时安装候选档案 |
+| `--rules-target` | 条件必填 | 没有档案规则路径可推导时必须指定 |
+| `--profile-target` | 可选 | 默认安装到 `migration/profile_defs/` |
+| `--force` | 可选 | 允许覆盖正式文件，慎用 |
 
 ```powershell
 .venv\Scripts\python.exe -m migration.rule_author `

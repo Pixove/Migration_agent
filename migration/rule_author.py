@@ -460,13 +460,26 @@ def _record_conflict(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="从知识文档抽取候选迁移规则（只生成待评审文件）"
+        description=(
+            "从知识文档抽取候选迁移规则（只生成待评审文件）。"
+            "生成模式至少需要 --docs；审批模式需要 --approve 和 "
+            "--rules-candidate。"
+        ),
+        epilog=(
+            "示例：\n"
+            "  生成候选：python -m migration.rule_author "
+            "--docs guide.md [--profile-name name]\n"
+            "  审批安装：python -m migration.rule_author --approve "
+            "--rules-candidate candidates.yaml "
+            "[--profile-candidate profile.yaml]"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
         "--docs",
         action="append",
         default=[],
-        help="知识文档路径，可多次指定",
+        help="知识文档路径，生成模式必填，可多次指定",
     )
     parser.add_argument(
         "--output",
@@ -485,7 +498,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--profile-name",
-        help="同时生成候选档案时的档案名",
+        help="可选；同时生成候选档案时的档案名",
     )
     parser.add_argument(
         "--profile-output",
@@ -533,15 +546,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--approve",
         action="store_true",
-        help="批准候选文件并复制到正式规则/档案目录",
+        help="进入审批模式，批准候选文件并复制到正式目录",
     )
     parser.add_argument(
         "--rules-candidate",
-        help="要批准的候选规则 YAML",
+        help="审批模式必填；要批准的候选规则 YAML",
     )
     parser.add_argument(
         "--rules-target",
-        help="正式规则目标路径",
+        help="可选；没有档案规则路径可推导时必填",
     )
     parser.add_argument(
         "--profile-candidate",
