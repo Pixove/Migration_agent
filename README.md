@@ -110,6 +110,7 @@ DeepSeek 等 OpenAI 兼容服务可直接修改 `base_url`、`api_key_env` 和
 | `examples/py38_demo` | Python 3.8 风格升级 | `main.py --source examples\py38_demo --output D:\py38_migrated --docs knowledge_base/py3_upgrade` |
 | `examples/semantic_big_demo` | 语义编辑与信号修复 | `main.py --source examples\semantic_big_demo --output D:\big_migrated --agentic` |
 | `examples/langchain_legacy` | LangChain Community 包拆分 | 见 `examples/langchain_legacy/README.md` |
+| `examples/rule_author_demo` | 候选规则与档案生成 | 见 `examples/rule_author_demo/README.md` |
 
 ## 知识库与规则
 
